@@ -17,12 +17,18 @@ def post_program_action(source, target, env):
 
 print("PROGPATH is $PROGPATH")
 
+mcu = env.get("BOARD_MCU", "esp32")
+target_chip = "esp32" if mcu == "esp32" else "esp32s3"
+bootloader_offset = "0x1000" if mcu == "esp32" else "0x0"
+gxx = "xtensa-esp32-elf-g++" if mcu == "esp32" else "xtensa-esp32s3-elf-g++"
+ld = "xtensa-esp32-elf-ld" if mcu == "esp32" else "xtensa-esp32s3-elf-ld"
+
 def tst(source, target, env):
    print("tst")
 
 # We generate all parts, using post actions or dependencies. Now merge all to a firmware bin file....
 def generate_image(source, target, env):
-  env.Execute("esptool.py --chip esp32 merge_bin -o $BUILD_DIR/firmware-image.bin --flash_mode dio --flash_size 4MB 0x1000 $BUILD_DIR/bootloader.bin 0x8000 $BUILD_DIR/partitions.bin 0x10000 $BUILD_DIR/firmware.bin 0x310000 $BUILD_DIR/fonts.bin 0x320000 $BUILD_DIR/littlefs.bin --target-offset 0x1000")
+  env.Execute(f"esptool.py --chip {target_chip} merge_bin -o $BUILD_DIR/firmware-image.bin --flash_mode dio --flash_size 4MB {bootloader_offset} $BUILD_DIR/bootloader.bin 0x8000 $BUILD_DIR/partitions.bin 0x10000 $BUILD_DIR/firmware.bin 0x310000 $BUILD_DIR/fonts.bin 0x320000 $BUILD_DIR/littlefs.bin --target-offset {bootloader_offset}")
 
 
 # default target is elf file (if not target buildfs or uploadfs on command line)
@@ -43,11 +49,11 @@ env.AddCustomTarget(
 # After generating the elf file, generate fonts.bin as well
 env.AddPostAction("$PROGPATH", 
   env.VerboseAction(" ".join([
-    "xtensa-esp32-elf-g++", "-fno-lto", "-c", "RX_FSK/src/fonts/fonts.cpp", "-o", "$BUILD_DIR/src/src/fonts/fonts.cpp.o" ]),
+    gxx, "-fno-lto", "-c", "RX_FSK/src/fonts/fonts.cpp", "-o", "$BUILD_DIR/src/src/fonts/fonts.cpp.o" ]),
     "Building $BUILD_DIR/fonts.bin"))
 env.AddPostAction("$PROGPATH", 
   env.VerboseAction(" ".join([
-    "xtensa-esp32-elf-ld", "-T", "fontlink.ld", "--oformat=binary", "-o", "$BUILD_DIR/fonts.bin", "$BUILD_DIR/src/src/fonts/fonts.cpp.o" ]),
+    ld, "-T", "fontlink.ld", "--oformat=binary", "-o", "$BUILD_DIR/fonts.bin", "$BUILD_DIR/src/src/fonts/fonts.cpp.o" ]),
     "Building $BUILD_DIR/fonts.bin"))
 
 

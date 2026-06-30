@@ -600,6 +600,14 @@ float AXP2101PMU::getTemperature() { return -1; }
 /* Simple function to get battery voltage on systems that do not have a PMU */
 float getBattNoPMU() {
     if(sonde.config.batt_adc<0) return -999;
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+    pinMode(37, OUTPUT);
+    digitalWrite(37, LOW);
+    delay(5);
+#endif
     float batt = (float)(analogRead(sonde.config.batt_adc)) / 4095 * 2 * 3.3 * 1.1;
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+    digitalWrite(37, HIGH);
+#endif
     return batt;
 }

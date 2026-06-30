@@ -173,6 +173,26 @@ void Sonde::setDefaultConfig(BoardTypes board) {
 		config.button2_pin = -1;
 	       }
 	       break;
+	case BOARD_HELTEC_LORA32_V3:
+		LOG_I(TAG, "Autoconfig: Heltec WiFi LoRa 32 V3 board detected\n");
+		config.type = TYPE_TTGO;
+		config.button_pin = 0;
+		config.button2_pin = -1;
+		config.button2_axp = 0;
+		config.led_pout = 35;
+		config.power_pout = 36;
+		config.disptype = 0;
+		config.oled_sda = 17;
+		config.oled_scl = 18;
+		config.oled_rst = 21;
+		config.gps_rxd = -1;
+		config.gps_txd = -1;
+		config.batt_adc = 1;
+		config.sx1278_ss = 8;
+		config.sx1278_miso = 11;
+		config.sx1278_mosi = 10;
+		config.sx1278_sck = 9;
+		break;
 	}
 }
 
@@ -201,6 +221,9 @@ void Sonde::defaultConfig() {
 	config.spectrum=10;
 	config.b2mute = 360;
 	// Try autodetecting board type
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+	setDefaultConfig(BOARD_HELTEC_LORA32_V3);
+#else
 	config.type = TYPE_TTGO;
   	// Seems like on startup, GPIO4 is 1 on v1 boards, 0 on v2.1 boards?
 	config.gps_rxd = -1;
@@ -362,6 +385,7 @@ void Sonde::defaultConfig() {
 			}
 		}
 	}
+#endif
 	//
 	config.noisefloor = -125;
 	strcpy(config.call,"NOCALL");

@@ -11,6 +11,13 @@
 #include "Sonde.h"
 #include "pmu.h"
 
+#if !defined(VSPI)
+#define VSPI 3
+#endif
+#if !defined(HSPI)
+#define HSPI 2
+#endif
+
 
 int readLine(Stream &stream, char *buffer, int maxlen);
 

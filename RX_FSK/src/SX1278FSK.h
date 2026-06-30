@@ -258,6 +258,15 @@ public:
 
 	SemaphoreHandle_t _lock = NULL;
 
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(SX126X)
+	bool longPacketMode = false;
+	uint8_t emulated_rx_read_ptr = 0;
+	float currentFrequency = 0.0;
+	float currentBitrate = 0.0;
+	float currentRxBw = 0.0;
+	float currentAfcBw = 0.0;
+#endif
+
 #if 0
 	//! It gets the internal temperature of the module.
 	/*!
