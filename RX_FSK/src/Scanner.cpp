@@ -180,7 +180,7 @@ void Scanner::scan()
 		//freq = 404000000 + 100*i*scanconfig.CHANSTEP;
 #if defined(SX126X)
 		sx1278.writeRegister(REG_OP_MODE, FSK_STANDBY_MODE);
-		sx1278.setFrequency(freq * 0.000001f);
+		sx1278.setFrequency(freq);
 		sx1278.writeRegister(REG_OP_MODE, FSK_RX_MODE);
 		delayMicroseconds(5000); // Wait 5ms for PLL lock and AGC settling on SX1262
 #else

@@ -927,8 +927,9 @@ static sx126x_gfsk_bw_t getBandwidth(unsigned bandwidth) {
     4800,5800,7300,9700,11700,14600,19500,23400,29300,39000,46900,
     58600,78200,93800,117300,156200,187200,234300,312000,373600,467000,
   };
-  for (int i = 0; i < sizeof limits / sizeof *limits - 1; i++)
-    if (bandwidth < (limits[i] + limits[i + 1]) / 2) return tab[i];
+  for (int i = 0; i < sizeof limits / sizeof *limits; i++) {
+    if (bandwidth <= limits[i]) return tab[i];
+  }
   return SX126X_GFSK_BW_467000;
 }
 
@@ -965,7 +966,7 @@ uint8_t SX1278FSK::ON() {
     sx126x_set_standby(NULL, SX126X_STANDBY_CFG_RC);
     sx126x_set_reg_mode(NULL, SX126X_REG_MODE_DCDC);
     sx126x_set_pkt_type(NULL, SX126X_PKT_TYPE_GFSK);
-    sx126x_cal_img(NULL, 0x6B, 0x6F);
+    sx126x_cal_img(NULL, 0x61, 0x6F);
     uint8_t val = 0x96;
     sx126x_write_register(NULL, 0x08AC, &val, 1);
     sx126x_clear_device_errors(NULL);
@@ -1062,7 +1063,7 @@ float SX1278FSK::getBitrate() {
 
 uint8_t SX1278FSK::setRxBandwidth(float bw) {
     currentRxBw = bw;
-    modParams.bw_dsb_param = getBandwidth(bw);
+    modParams.bw_dsb_param = getBandwidth(bw * 2);
     sx126x_set_gfsk_mod_params(NULL, &modParams);
     return 0;
 }
@@ -1083,7 +1084,7 @@ float SX1278FSK::getAFCBandwidth() {
 uint8_t SX1278FSK::setFrequency(float freq) {
     currentFrequency = freq;
     freq += sonde.config.freqofs;
-    uint32_t freq_hz = (uint32_t)(freq * 1000000.0);
+    uint32_t freq_hz = (uint32_t)freq;
     sx126x_set_rf_freq(NULL, freq_hz);
     return 0;
 }

@@ -1,0 +1,13 @@
+Notes on SX1262 Frequency Unit Mismatch and RX Bandwidth Optimization
+
+1. Frequency Unit Mismatch Bug in SX1262 Driver
+- Bug: The SX1278 FSK driver uses Hz directly (e.g., setFrequency(403000000)). However, the SX1262 implementation in SX1278FSK.cpp was written to accept MHz (e.g. 403.0) and multiplied it by 1000000.0 internally.
+- Symptom: This caused integer overflow when decoders or main routines passed Hz (e.g. 403000000 * 1000000), tuning the radio to a garbage frequency and failing to receive any signals on boards using SX1262 (such as Heltec WiFi LoRa 32 V3).
+- Mitigation:
+  - Changed SX1278FSK::setFrequency() (for SX126X build flag) to expect Hz directly without internal multiplication.
+  - Reverted the Scanner in Scanner.cpp to pass the frequency in Hz directly rather than converting it to MHz.
+
+2. Receiver Bandwidth Selection Optimization
+- Issue: Upper layers pass Single-Sideband (SSB) bandwidth, but the SX1262 driver expects Double-Sideband (DSB). The RS41 decoder requests a bandwidth of 6300 Hz (which maps to 12.6 kHz DSB).
+- Bug: The getBandwidth() helper used a rounding-to-nearest logic. 12600 Hz was rounded down to 11700 Hz (11.7 kHz DSB). This was too narrow for RS41, causing packet loss with minor crystal frequency drifts.
+- Fix: Changed getBandwidth() to use ceiling logic (returning the first filter bandwidth limit >= requested bandwidth). This maps 12600 Hz to 14600 Hz (14.6 kHz DSB), providing safe margin for frequency drift.
