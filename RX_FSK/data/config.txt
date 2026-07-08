@@ -64,7 +64,7 @@ norx_timeout=20
 #-------------------------------#
 startfreq=400
 channelbw=10
-spectrum=-1 #10
+spectrum=-1
 noisefloor=-125
 marker=1
 #-------------------------------#

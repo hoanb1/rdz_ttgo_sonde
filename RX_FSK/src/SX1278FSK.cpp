@@ -1007,9 +1007,9 @@ byte SX1278FSK::readRegister(byte address) {
         return flags;
     }
     if (address == REG_RSSI_VALUE_FSK) {
-        int8_t rssi_raw = 0;
-        sx126x_get_rssi_inst_raw(NULL, (uint8_t*)&rssi_raw);
-        return (uint8_t)rssi_raw;
+        uint8_t rssi_raw = 0;
+        sx126x_get_rssi_inst_raw(NULL, &rssi_raw);
+        return rssi_raw;
     }
     if (address == REG_AFC_MSB || address == REG_AFC_LSB || address == REG_FEI_MSB || address == REG_FEI_LSB) {
         return 0;
@@ -1152,9 +1152,9 @@ uint8_t SX1278FSK::setPayloadLength(int len) {
 }
 
 int16_t SX1278FSK::getRSSI() {
-    int8_t rssi_raw = 0;
-    sx126x_get_rssi_inst_raw(NULL, (uint8_t*)&rssi_raw);
-    return (int16_t)(uint8_t)rssi_raw;
+    uint8_t rssi_raw = 0;
+    sx126x_get_rssi_inst_raw(NULL, &rssi_raw);
+    return (int16_t)rssi_raw;
 }
 
 int32_t SX1278FSK::getFEI() { return 0; }
@@ -1170,7 +1170,7 @@ uint8_t SX1278FSK::receive() {
     if (longPacketMode) {
         sx126x_long_pkt_set_rx_with_timeout_in_rtc_step(NULL, &pktRxState, SX126X_RX_CONTINUOUS);
     } else {
-        sx126x_set_rx_with_timeout_in_rtc_step(NULL, 0);
+        sx126x_set_rx_with_timeout_in_rtc_step(NULL, SX126X_RX_CONTINUOUS);
     }
     return 0;
 }

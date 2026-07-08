@@ -6,6 +6,7 @@
 #include "Sonde.h"
 #include "Display.h"
 #include "src/conn-mqtt.h"
+#include "sx1262/sx126x.h"
 
 
 double STARTF;
@@ -181,6 +182,7 @@ void Scanner::scan()
 		sx1278.writeRegister(REG_OP_MODE, FSK_STANDBY_MODE);
 		sx1278.setFrequency(freq * 0.000001f);
 		sx1278.writeRegister(REG_OP_MODE, FSK_RX_MODE);
+		delayMicroseconds(5000); // Wait 5ms for PLL lock and AGC settling on SX1262
 #else
 		uint32_t frf = freq * 1.0 * (1<<19) / SX127X_CRYSTAL_FREQ;
 		if( (lastfrf>>16)!=(frf>>16) ) {
@@ -194,7 +196,8 @@ void Scanner::scan()
 #endif
 		// Wait TS_HOP (20us) + TS_RSSI ( 2^(scacconfig.SMOOTH+1) / 4 / CHANBW us)
 		delayMicroseconds(wait);
-		int rssi = -(int)sx1278.readRegister(REG_RSSI_VALUE_FSK);
+		int rssi_val = sx1278.readRegister(REG_RSSI_VALUE_FSK);
+		int rssi = -(int)rssi_val;
 		if(iter==0) { scanresult[i] = rssi; } else {
 			if(rssi>scanresult[i]) scanresult[i]=rssi;
 		}
