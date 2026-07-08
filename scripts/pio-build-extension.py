@@ -61,5 +61,6 @@ env.AddPostAction("$PROGPATH",
 env.AddCustomTarget(
   "uploadfonts",
   "$BUILD_DIR/${PROGNAME}.bin",
-  "scripts/uploadfonts.py $BUILD_DIR/fonts.bin $PARTITIONS_TABLE_CSV"
+  '"$PYTHONEXE" scripts/uploadfonts.py $BUILD_DIR/fonts.bin $PARTITIONS_TABLE_CSV'
 )
+

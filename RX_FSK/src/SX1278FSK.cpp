@@ -946,6 +946,7 @@ void SX1278FSK::setup(SemaphoreHandle_t lock) {
     digitalWrite(12, HIGH);
     pinMode(8, OUTPUT); // RADIO_NSS
     digitalWrite(8, HIGH);
+    pinMode(13, INPUT); // RADIO_BUSY
     
     SPI.begin(sonde.config.sx1278_sck, sonde.config.sx1278_miso, sonde.config.sx1278_mosi, -1);
     SPI.setBitOrder(MSBFIRST);

@@ -220,6 +220,10 @@ void Sonde::defaultConfig() {
 	config.power_pout = -1;
 	config.spectrum=10;
 	config.b2mute = 360;
+	config.sd.cs = -1;
+	config.sd.miso = -1;
+	config.sd.mosi = -1;
+	config.sd.clk = -1;
 	// Try autodetecting board type
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
 	setDefaultConfig(BOARD_HELTEC_LORA32_V3);

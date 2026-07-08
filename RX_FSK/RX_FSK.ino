@@ -1961,7 +1961,7 @@ static void checkTouchStatus() {
 unsigned long bdd1, bdd2;
 static bool b1wasdown = false;
 static void IRAM_ATTR buttonISR() {
-  if (digitalRead(button1.pin) == 0) { // Button down
+  if (gpio_get_level((gpio_num_t)button1.pin) == 0) { // Button down
     b1wasdown = true;
     unsigned long now = my_millis();
     if (now - button1.keydownTime < 500) {
@@ -1997,7 +1997,7 @@ static void IRAM_ATTR buttonISR() {
 }
 
 static void IRAM_ATTR button2ISR() {
-  if (digitalRead(button2.pin) == 0) { // Button down
+  if (gpio_get_level((gpio_num_t)button2.pin) == 0) { // Button down
     unsigned long now = my_millis();
     if (now - button2.keydownTime < 500) {
       // Double press

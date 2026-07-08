@@ -177,6 +177,11 @@ void Scanner::scan()
 	    for(int i=0; i<scanconfig.PLOT_W*scanconfig.SMPL_PIX; i++) {
 		freq = STARTF + 1000.0*i*scanconfig.CHANSTEP;
 		//freq = 404000000 + 100*i*scanconfig.CHANSTEP;
+#if defined(SX126X)
+		sx1278.writeRegister(REG_OP_MODE, FSK_STANDBY_MODE);
+		sx1278.setFrequency(freq * 0.000001f);
+		sx1278.writeRegister(REG_OP_MODE, FSK_RX_MODE);
+#else
 		uint32_t frf = freq * 1.0 * (1<<19) / SX127X_CRYSTAL_FREQ;
 		if( (lastfrf>>16)!=(frf>>16) ) {
         		sx1278.writeRegister(REG_FRF_MSB, (frf&0xff0000)>>16);
@@ -186,6 +191,7 @@ void Scanner::scan()
 		}
         	sx1278.writeRegister(REG_FRF_LSB, (frf&0x0000ff));
 		lastfrf = frf;
+#endif
 		// Wait TS_HOP (20us) + TS_RSSI ( 2^(scacconfig.SMOOTH+1) / 4 / CHANBW us)
 		delayMicroseconds(wait);
 		int rssi = -(int)sx1278.readRegister(REG_RSSI_VALUE_FSK);
