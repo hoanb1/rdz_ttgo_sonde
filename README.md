@@ -35,6 +35,17 @@ Meteo-Radiy | MP3-H1 (MRZ-H1) | :heavy_check_mark: | :x: | :x: | :x:
 SondeHub integration has mainly been tested with RS41 and DFM. 
 
 
+### Radio Performance & Sensitivity
+
+The firmware includes several optimizations for receiving weak radiosonde signals at long range:
+
+- **LNA Boost (SX1278)**: Enables the Low-Noise Amplifier boost circuit for the 400-525 MHz band, improving sensitivity by ~3 dB on TTGO LoRa32 and T-Beam boards.
+- **RxBoosted Gain (SX1262)**: Enabled by default on Heltec WiFi LoRa 32 V3 boards for improved sensitivity.
+- **RSSI Smoothing (SX1278)**: 8-sample RSSI averaging for more stable preamble detection with weak signals.
+- **Reed-Solomon ECC**: Full RS(255,231) error correction decoder (from dxlAPRS) can fix up to 12 symbol errors per codeword, recovering frames that would otherwise be lost.
+- **Automatic Frequency Correction (SX1278)**: Hardware AFC automatically tracks frequency drift of the sonde transmitter.
+- **Configurable RX Bandwidth**: Tune via `config.txt` (e.g., `rs41.rxbw=6300`) to balance sensitivity vs. frequency tolerance.
+
 Support for other radiosondes that use AFSK modulation is not feasible with the TTGO hardware.
 In particular, decoding iMet-1/iMet-4 radiosondes is not practical (iMet-5x seems to use FSK,
 so should be feasible to implement).
