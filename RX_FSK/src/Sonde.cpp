@@ -921,4 +921,68 @@ SondeType Sonde::realType(SondeInfo *si) {
 	else return si->type;
 }
 
+bool Sonde::isGpsOutlier(float prev_lat, float prev_lon, float new_lat, float new_lon) {
+	if (isnan(new_lat) || isnan(new_lon) || new_lat < -90.0f || new_lat > 90.0f || new_lon < -180.0f || new_lon > 180.0f) {
+		return true;
+	}
+	if (fabsf(new_lat) < 0.0001f && fabsf(new_lon) < 0.0001f) {
+		return true;
+	}
+	if (fabsf(prev_lat) > 0.0001f || fabsf(prev_lon) > 0.0001f) {
+		float dlat = (new_lat - prev_lat) * 111320.0f;
+		float dlon = (new_lon - prev_lon) * 111320.0f * cosf(prev_lat * 0.0174532925f);
+		float dist = sqrtf(dlat * dlat + dlon * dlon);
+		// If jump > 350m within ~1 second, reject as outlier
+		if (dist > 350.0f) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void Sonde::updateLandingPrediction(SondeInfo *si) {
+	if (!si) return;
+	SondeData *sd = &(si->d);
+	if (!VALIDPOS(sd->validPos) || (sd->validPos & 0x80)) {
+		return;
+	}
+
+	// Only predict landing when sonde is descending (vs < -0.5 m/s)
+	if (sd->vs < -0.5f) {
+		// Target ground elevation: use configured station elevation or default 0m
+		float ground_alt = (!isnan(config.rxalt) && config.rxalt > -100.0f) ? config.rxalt : 0.0f;
+		float delta_alt = sd->alt - ground_alt;
+		float descent_rate = fabsf(sd->vs);
+
+		if (delta_alt > 0.0f && descent_rate >= 0.5f) {
+			float time_remaining = delta_alt / descent_rate; // in seconds
+			float drift_dist = sd->hs * time_remaining;      // in meters
+			float heading_rad = sd->dir * 0.0174532925f;
+
+			float dN = drift_dist * cosf(heading_rad);
+			float dE = drift_dist * sinf(heading_rad);
+
+			float lat_rad = sd->lat * 0.0174532925f;
+			float cos_lat = cosf(lat_rad);
+			if (fabsf(cos_lat) < 0.0001f) cos_lat = 0.0001f;
+
+			sd->pred_lat = sd->lat + (dN / 111320.0f);
+			sd->pred_lon = sd->lon + (dE / (111320.0f * cos_lat));
+			sd->pred_alt = ground_alt;
+			sd->pred_time = time_remaining;
+			sd->pred_valid = true;
+		} else {
+			// At or below ground elevation
+			sd->pred_lat = sd->lat;
+			sd->pred_lon = sd->lon;
+			sd->pred_alt = sd->alt;
+			sd->pred_time = 0.0f;
+			sd->pred_valid = true;
+		}
+	} else {
+		// Ascending or floating
+		sd->pred_valid = false;
+	}
+}
+
 Sonde sonde = Sonde();

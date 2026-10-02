@@ -126,6 +126,12 @@ typedef struct st_sondedata {
 	float relativeHumidity; // relative humidity
 	float pressure;
 	float batteryVoltage = -1;
+	// Estimated landing (touchdown) prediction
+	float pred_lat;
+	float pred_lon;
+	float pred_alt;
+	float pred_time;
+	bool pred_valid;
 } SondeData;
 
 typedef struct st_sondeinfo {
@@ -265,6 +271,14 @@ struct st_sdcard {
 	int speed;	/* SPI speed in Hz (0 = library default), e.g. 4000000, 8000000, 16000000 */
 };
 
+struct st_hoanuk {
+	int active;
+	char host[64];
+	int port;
+	char path[64];
+	char token[64];
+};
+
 // to be extended
 enum { TYPE_TTGO, TYPE_M5_CORE2, TYPE_M5_CORE };
 
@@ -336,6 +350,7 @@ typedef struct st_rdzconfig {
 	struct st_cm cm;
 	struct st_sdcard sd;
 	struct st_ss ss;
+	struct st_hoanuk hoanuk;
 } RDZConfig;
 
 
@@ -410,6 +425,8 @@ public:
         void dispsavectlOFF(int rxactive);
 
 	void setIP(String ip, bool isAP);
+	void updateLandingPrediction(SondeInfo *si);
+	static bool isGpsOutlier(float prev_lat, float prev_lon, float new_lat, float new_lon);
 };
 
 extern Sonde sonde;

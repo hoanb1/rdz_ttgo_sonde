@@ -60,6 +60,9 @@
 #if FEATURE_SONDEHUB
 #include "src/conn-sondehub.h"
 #endif
+#if FEATURE_HOANUK
+#include "src/conn-hoanuk.h"
+#endif
 
 #include "src/conn-system.h"
 
@@ -72,6 +75,9 @@ Conn *connectors[] = { &connSystem,
 #endif
 #if FEATURE_SONDEHUB
 &connSondehub,
+#endif
+#if FEATURE_HOANUK
+&connHoanUK,
 #endif
 #if FEATURE_CHASEMAPPER
 &connChasemapper,
@@ -100,11 +106,11 @@ PMU *pmu = NULL;
 SemaphoreHandle_t axpSemaphore;
 extern uint8_t pmu_irq;
 
-const char *updateHost = "rdzsonde.org";
+const char *updateHost = "hoan.uk";
 int updatePort = 80;
 
-const char *updatePrefixM = "/main/";
-const char *updatePrefixD = "/dev2/";
+const char *updatePrefixM = "/firmware/rdz/main/";
+const char *updatePrefixD = "/firmware/rdz/dev2/";
 const char *updatePrefix = updatePrefixM;
 const char *updateFs = "update.fs.bin";
 const char *updateIno = "update.ino.bin";
@@ -853,6 +859,14 @@ struct st_configitems config_list[] = {
   {"sondehub.fiinterval", 0, &sonde.config.sondehub.fiinterval},
   {"sondehub.fimaxdist", 0, &sonde.config.sondehub.fimaxdist},
   {"sondehub.fimaxage", -7, &sonde.config.sondehub.fimaxage},
+#endif
+#if FEATURE_HOANUK
+  /* hoan.uk Platform settings */
+  {"hoanuk.active", 0, &sonde.config.hoanuk.active},
+  {"hoanuk.host", 63, &sonde.config.hoanuk.host},
+  {"hoanuk.port", 0, &sonde.config.hoanuk.port},
+  {"hoanuk.path", 63, &sonde.config.hoanuk.path},
+  {"hoanuk.token", 63, &sonde.config.hoanuk.token},
 #endif
 };
 
@@ -2521,6 +2535,9 @@ void loopDecoder() {
 
   // wifi active and good packet received => send packet
   SondeInfo *s = &sonde.sondeList[rxtask.receiveSonde];
+  if ((res & 0xff) == 0) {
+    sonde.updateLandingPrediction(s);
+  }
   if ((res & 0xff) == 0 && connected) {
     //Send a packet with position information
     // first check if ID and position lat+lonis ok
@@ -2536,6 +2553,9 @@ void loopDecoder() {
   connSondeseeker.updateSonde( s );
 #endif
     }
+#if FEATURE_HOANUK
+    connHoanUK.updateSonde( s );
+#endif
 #if FEATURE_SONDEHUB
     connSondehub.updateSonde( s );   // invoke sh_send_data....
 #endif
@@ -3351,11 +3371,11 @@ void execOTA() {
       // Understand the partitions and
       // space availability
       Serial.println("Not enough space to begin OTA");
-      client.clear();
+      client.stop();
     }
   } else {
     Serial.println("There was no content in the response");
-    client.clear();
+    client.stop();
   }
   // Back to some normal state
   enterMode(ST_DECODER);

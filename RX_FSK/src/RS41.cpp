@@ -472,11 +472,21 @@ static void posrs41(const byte b[], uint32_t b_len, uint32_t p)
 #endif
 
    wgs84r(x, y, z, &lat, &long0, &heig);
+   float new_lat = (float)(X2C_DIVL(lat,1.7453292519943E-2));
+   float new_lon = (float)(X2C_DIVL(long0,1.7453292519943E-2));
+
+   // Urban Multipath & Kinematic Outlier Filter
+   if (Sonde::isGpsOutlier(si->lat, si->lon, new_lat, new_lon) || heig > 55000.0 || heig < -500.0) {
+      Serial.printf(" [GPS Outlier Rejected (lat:%.5f, lon:%.5f, alt:%.1f)] ", new_lat, new_lon, (float)heig);
+      if (si->validPos) si->validPos |= 0x80; // keep previous position as old
+      return;
+   }
+
+   si->lat = new_lat;
    Serial.print(" ");
-   si->lat = (float)(X2C_DIVL(lat,1.7453292519943E-2));
    Serial.print(si->lat);
    Serial.print(" ");
-   si->lon = (float)(X2C_DIVL(long0,1.7453292519943E-2));
+   si->lon = new_lon;
    Serial.print(si->lon);
    if (heig<1.E+5 && heig>(-1.E+5)) {
       Serial.print(" ");
@@ -823,7 +833,9 @@ int RS41::decode41(byte *data, int maxlen)
 			posrs41(data+p, len, 0);
 			si->sats = (data+p)[18];
 			Serial.printf("sats: %d\n", si->sats);
-			// TODO: Maybe check elsewhere if sats < 4 => do not use position
+			if (si->sats < 4 && si->sats > 0) {
+				if (si->validPos) si->validPos |= 0x80;
+			}
 			break;
 		case '\202':    // pos, new X version
 			posrs41(data+p, len, 0);
@@ -836,6 +848,9 @@ int RS41::decode41(byte *data, int maxlen)
 				if( (data+p)[18+i/8] & (1<<(i&7)) ) sats++;
 			}
 			si->sats = sats;
+			if (sats < 4 && sats > 0) {
+				if (si->validPos) si->validPos |= 0x80;
+			}
 			break;
 		}
 		case 'z': // 0x7a is character z - 7A-MEAS temperature and humidity frame

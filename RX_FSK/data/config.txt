@@ -122,12 +122,12 @@ tcp.comment=
 #-------------------------------#
 # data not sanitized / quality checked, outliers not filtered out
 mqtt.active=0
-mqtt.id=rdz_sonde_server
-mqtt.host=192.168.1.5
+mqtt.id=rdz_ttgo_sonde
+mqtt.host=mqtt.hoan.uk
 mqtt.port=1883
 mqtt.username=
 mqtt.password=
-mqtt.prefix=rdz_sonde_server/
+mqtt.prefix=hoanuk/
 mqtt.report_interval=60000
 #-------------------------------#
 # Sondehub v2 settings
@@ -152,6 +152,14 @@ sondehub.fimaxage=6
 ss.active=1
 ss.host=239.255.0.1
 ss.port=62655
+#-------------------------------#
+# hoan.uk Platform settings
+#-------------------------------#
+hoanuk.active=1
+hoanuk.host=api.hoan.uk
+hoanuk.port=80
+hoanuk.path=/api/v1/telemetry/ingest
+hoanuk.token=
 #-------------------------------#
 # EOF
 #-------------------------------#

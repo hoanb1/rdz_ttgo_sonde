@@ -47,15 +47,22 @@ const masterInfo = document.getElementById('masterDiv');
 const develInfo = document.getElementById('develDiv');
 
 let request = new XMLHttpRequest();
-request.open('GET', 'http://rdzsonde.org/main/update-info.html');
+request.open('GET', 'https://hoan.uk/firmware/rdz/main/update-info.html');
 request.onload = function() {
   masterInfo.innerHTML = request.response.replace(/<[^>]*>/g, '');
 }
+request.onerror = function() {
+  masterInfo.innerHTML = 'v1.3.1 (hoan.uk)';
+}
 request.send();
+
 let drequest = new XMLHttpRequest();
-drequest.open('GET', 'http://rdzsonde.org/dev2/update-info.html');
+drequest.open('GET', 'https://hoan.uk/firmware/rdz/dev2/update-info.html');
 drequest.onload = function() {
-  develInfo.innerHTML= drequest.response.replace(/<[^>]*>/g, '');;
+  develInfo.innerHTML = drequest.response.replace(/<[^>]*>/g, '');
+}
+drequest.onerror = function() {
+  develInfo.innerHTML = 'v1.3.1-dev';
 }
 drequest.send();
 </script>

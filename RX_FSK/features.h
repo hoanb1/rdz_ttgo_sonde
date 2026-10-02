@@ -11,6 +11,7 @@
 #define FEATURE_MQTT 1
 #define FEATURE_SDCARD 1
 #define FEATURE_APRS 1
+#define FEATURE_HOANUK 1
 
 
 // Additional optional components

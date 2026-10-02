@@ -34,6 +34,8 @@ int DecoderBase::setup(decoderSetupCfg &setupcfg, uint16_t agcbw, uint16_t rxbw)
                 DBG(Serial.printf("Setting RX bandwidth to %d Hz FAILED", rxbw));
                 return 1;
         }
+        // Enable maximum LNA gain + HF Boost (+3dB) on SX1278
+        sx1278.setLNAGain(0);
 
         if(sx1278.setRxConf(setupcfg.rx_cfg)!=0) {
                 DBG(Serial.println("Setting RX Config FAILED"));
