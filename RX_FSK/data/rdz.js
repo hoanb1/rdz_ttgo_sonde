@@ -1,9 +1,12 @@
 let stypes=new Map();
-stypes.set('4', 'RS41');
-stypes.set('R', 'RS92');
-stypes.set('D', 'DFM');
-stypes.set('M', 'M10/M20');
-stypes.set('3', 'MP3H');
+stypes.set('4', 'RS41 (Vaisala Weather Radiosonde)');
+stypes.set('N', 'RS41-NFW (Amateur / Car Tracker)');
+stypes.set('R', 'RS92 (Vaisala Legacy)');
+stypes.set('D', 'DFM (Graw DFM-06/09/17)');
+stypes.set('M', 'M10 (Meteomodem)');
+stypes.set('2', 'M20 (Meteomodem)');
+stypes.set('3', 'MP3H (Meteolabor)');
+
 
 function loadaprs(baseurl,callback) {
   var link = document.createElement('link');
@@ -52,7 +55,6 @@ function prep() {
   var stlist=document.querySelectorAll("input.stype");
   for(txt of stlist){
     var val=txt.getAttribute('value'); var nam=txt.getAttribute('name'); 
-    if(val=='2') { val='M'; }
     var sel=document.createElement('select');
     sel.setAttribute('name',nam);
     for(stype of stypes) { 

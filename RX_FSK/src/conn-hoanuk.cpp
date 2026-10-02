@@ -13,6 +13,7 @@
 
 #include "conn-hoanuk.h"
 #include "posinfo.h"
+#include "RS41.h"
 #include "../core.h"
 #include <WiFi.h>
 #include <sys/socket.h>
@@ -266,12 +267,22 @@ void ConnHoanUK::updateSonde(SondeInfo *si) {
         realtype = (si->d.subtype == 1) ? STYPE_M10 : STYPE_M20;
     }
 
+    const char *proto_name = sondeTypeStrSH[realtype];
+    char rs41_sub[16] = {0};
+    if (si->type == STYPE_RS41) {
+        if (RS41::getSubtype(rs41_sub, sizeof(rs41_sub), si) == 0 && rs41_sub[0]) {
+            proto_name = rs41_sub;
+        } else if (si->freq > 430.0f) {
+            proto_name = "RS41-NFW";
+        }
+    }
+
     if (si->d.ser[0]) {
         snprintf(callsign, sizeof(callsign), "%s", si->d.ser);
     } else if (si->d.id[0]) {
         snprintf(callsign, sizeof(callsign), "%s", si->d.id);
     } else {
-        snprintf(callsign, sizeof(callsign), "%s-%.3f", sondeTypeStrSH[realtype], si->freq);
+        snprintf(callsign, sizeof(callsign), "%s-%.3f", proto_name, si->freq);
     }
 
     bool has_valid_fix = (VALIDPOS(si->d.validPos) && (fabsf(si->d.lat) > 0.001f || fabsf(si->d.lon) > 0.001f));
@@ -299,7 +310,7 @@ void ConnHoanUK::updateSonde(SondeInfo *si) {
         "\"system_voltage\":%.2f",
         callsign,
         speed_kmh >= 2.5f ? "mobile" : "stationary",
-        sondeTypeStrSH[realtype],
+        proto_name,
         time_str,
         speed_kmh,
         (si->d.validPos & 0x40) ? si->d.sats : 0,

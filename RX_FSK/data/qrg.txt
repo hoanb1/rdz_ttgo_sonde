@@ -1,20 +1,22 @@
 # Frequency in Mhz (format nnn.nnn)
-# Type (4=RS41, R=RS92, D=DFM (automated normal/inverted), M=M10/M20, 3=MP3H)
-# (older versions: 6=DFM6, 9=DFM9, now both treated the same as D)
-# (older versions: M=M10, 2=M20, now both treaded the same: automated M10/M20 decoding)
+# Type (4=RS41, R=RS92, D=DFM, M=M10/M20, 3=MP3H)
 # +: active, -: not active
 #
-402.300 4 + Greifswald
-402.500 4 - Schleswig
-402.700 4 + HH-Sasel
-403.000 4 + DeBilt
-404.100 4 + Norderney
-404.300 4 - Schleswig_2
-404.500 4 - Meppen
-404.700 4 - Greifswald_2
-405.100 4 - Lindenberg
-405.700 4 + Bergen
-405.900 4 + Bergen_2
-405.100 4 + Meppen_2
-405.300 4 - Essen
+# Vietnam Upper-Air Radiosonde Stations (00Z & 12Z Daily Soundings)
+402.900 4 + HaNoi_Lang_RS41
+403.000 4 + DaNang_RS41
+403.100 4 + HCM_TanSonNhat_RS41
+402.700 4 + DienBien_RS41
+402.800 4 + Pleiku_RS41
+403.200 4 + CanTho_RS41
+403.300 4 + Vinh_RS41
+400.500 4 - RS41_Emergency
+
+# Safe Civilian / Amateur Channels (Vietnam ARFM Compliant)
+# 433.05 - 434.79 MHz: Băng tần ISM miễn phép cự ly ngắn (SRD <= 25mW)
+# 437.00 - 438.00 MHz: Băng tần Nghiệp dư Vô tuyến (Amateur HAB)
+434.500 N + HoanUK_ISM_RS41
+437.600 N + HoanUK_Amateur_RS41
+403.000 D - DFM_Scan
+403.000 M - M10M20_Scan
 # end

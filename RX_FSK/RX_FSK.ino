@@ -329,7 +329,7 @@ void setupChannelList() {
     *space = 0;
     float freq = atof(line.c_str());
     SondeType type;
-    if (space[1] == '4') {
+    if (space[1] == '4' || space[1] == 'N') {
       type = STYPE_RS41;
     } else if (space[1] == 'R') {
       type = STYPE_RS92;
