@@ -6,6 +6,72 @@
   <meta charset="UTF-8">
   <link rel="icon" href="data:,">
   <link rel="stylesheet" type="text/css" href="style.css">
+  <script>
+  function fetchStatus() {
+    fetch('/status.json')
+        .then(response => response.json())
+        .then(data => {
+            const statusBody = document.getElementById('status-body');
+            if (!statusBody) return;
+            statusBody.innerHTML = '';
+      
+            for (const [subsystem, status] of Object.entries(data)) {
+                const row = document.createElement('tr');
+                const subsystemCell = document.createElement('td');
+                subsystemCell.textContent = subsystem;
+                row.appendChild(subsystemCell);
+      
+                const statusCell = document.createElement('td');
+                statusCell.innerHTML = status; 
+                row.appendChild(statusCell);
+      
+                statusBody.appendChild(row);
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching subsystem status:', error);
+        });
+  } 
+  function selTab(evt, id) {
+      var i, tabcontent, tablinks;
+      tabcontent = document.getElementsByClassName("tabcontent");
+      for(i=0; i<tabcontent.length; i++) {
+          tabcontent[i].style.display = "none";
+          var link = tabcontent[i].dataset.src;
+          if(link) {
+              var iframe = tabcontent[i].getElementsByTagName("iframe")[0];
+              if (iframe) iframe.setAttribute("src", "");
+          }
+      }
+      tablinks = document.getElementsByClassName("tablinks");
+      for(i=0; i<tablinks.length; i++) {
+          tablinks[i].className = tablinks[i].className.replace(" active", "");
+      }	
+      var act = document.getElementById(id);
+      if (act) {
+          act.style.display = "flex";
+          if (evt && evt.currentTarget) {
+              evt.currentTarget.className += " active";
+          }
+          var link = act.dataset.src;
+          if(link) {
+              var iframe = act.getElementsByTagName("iframe")[0];
+              if (iframe) iframe.setAttribute("src", link);
+          }
+      }
+      var x = document.getElementById("myTopnav");
+      if (x) x.className = "topnav";
+  }
+  function myFunction() {
+    var x = document.getElementById("myTopnav");
+    if (!x) return;
+    if (x.className === "topnav") {
+      x.className += " responsive";
+    } else {
+      x.className = "topnav";
+    }
+  }
+  </script>
 </head>
 <body>
  <div class="wrapper"><div class="header">
@@ -86,68 +152,10 @@
 </div>
 </div>
 <script>
-function fetchStatus() {
-  fetch('/status.json')
-      .then(response => response.json())
-      .then(data => {
-          const statusBody = document.getElementById('status-body');
-          statusBody.innerHTML = ''; // Clear existing rows
-    
-          for (const [subsystem, status] of Object.entries(data)) {
-              const row = document.createElement('tr');
-
-              const subsystemCell = document.createElement('td');
-              subsystemCell.textContent = subsystem;
-              row.appendChild(subsystemCell);
-    
-              const statusCell = document.createElement('td');
-              statusCell.innerHTML = status; 
-              row.appendChild(statusCell);
-    
-              statusBody.appendChild(row);
-          }
-      })
-      .catch(error => {
-          console.error('Error fetching subsystem status:', error);
-      });
-} 
-function selTab(evt, id) {
-	var i, tabcontent, tablinks;
-	tabcontent=document.getElementsByClassName("tabcontent");
-	for(i=0; i<tabcontent.length; i++) {
-		tabcontent[i].style.display = "none";
-		var link = tabcontent[i].dataset.src;
-		if(link) {
-			var iframe = tabcontent[i].getElementsByTagName("iframe")[0];
-			iframe.setAttribute("src", "");
-		}
-	}
-	tablinks=document.getElementsByClassName("tablinks");
-	for(i=0; i<tablinks.length; i++) {
-		tablinks[i].className = tablinks[i].className.replace(" active", "");
-	}	
-	var act = document.getElementById(id);
-	act.style.display = "flex";
-	evt.currentTarget.className += " active";
-	
-	var link = act.dataset.src;
-	if(link) {
-		var iframe = act.getElementsByTagName("iframe")[0];
-		iframe.setAttribute("src", link);
-	}
-	var x = document.getElementById("myTopnav");
-    x.className = "topnav";
-}
-/* Toggle between adding and removing the "responsive" class to topnav when the user clicks on the icon */
-function myFunction() {
-  var x = document.getElementById("myTopnav");
-  if (x.className === "topnav") {
-    x.className += " responsive";
-  } else {
-    x.className = "topnav";
-  }
-}
-document.getElementById("defaultTab").click();
+window.addEventListener('DOMContentLoaded', function() {
+    var dt = document.getElementById("defaultTab");
+    if (dt) dt.click();
+});
 
 const bootID = "%BOOTID%";
 const prevID = localStorage.getItem("bootID");
