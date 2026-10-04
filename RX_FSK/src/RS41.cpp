@@ -395,40 +395,50 @@ static int32_t getint16(const byte frame[], uint32_t frame_len,
    return (int32_t)n;
 } /* end getint16() */
 
-// also used by MP3H.cpp
+// Precision 2-step Bowring geodetic conversion (millimeter precision at all radiosonde altitudes)
 void wgs84r(double x, double y, double z,
-                double * lat, double * long0,
-                double * heig)
+            double * lat, double * long0,
+            double * heig)
 {
-   double sl;
-   double ct;
-   double st;
-   double t;
-   double rh;
-   double xh;
-   double h;
-   h = x*x+y*y;
-   if (h>0.0) {
-      rh = sqrt(h);
-      xh = x+rh;
-      *long0 = atang2(xh, y)*2.0;
-      if (*long0>3.1415926535898) *long0 = *long0-6.2831853071796;
-      t = atan(X2C_DIVL(z*1.003364089821, rh));
-      st = sin(t);
-      ct = cos(t);
-      *lat = atan((X2C_DIVL(z+4.2841311513312E+4*st*st*st,
-                rh-4.269767270718E+4*ct*ct*ct)));
-      sl = sin(*lat);
-      *heig = X2C_DIVL(rh,cos(*lat))-(X2C_DIVR(6.378137E+6f,
-                sqrt((1.0-6.6943799901413E-3*sl*sl))));
+   double h = x * x + y * y;
+   if (h > 0.0) {
+      double p = sqrt(h);
+      *long0 = atan2(y, x);
+
+      // Exact WGS84 Ellipsoid Parameters
+      const double a = 6378137.0;             // Semi-major axis (m)
+      const double b = 6356752.31424518;      // Semi-minor axis (m)
+      const double e2 = 0.0066943799901413165; // First eccentricity squared
+      const double ep2 = (a * a - b * b) / (b * b); // Second eccentricity squared
+
+      // Iteration 1: Bowring approximation
+      double theta = atan2(z * a, p * b);
+      double s3 = sin(theta) * sin(theta) * sin(theta);
+      double c3 = cos(theta) * cos(theta) * cos(theta);
+      double phi = atan2(z + ep2 * b * s3, p - e2 * a * c3);
+
+      // Iteration 2: Refinement for exact stratosphere altitude precision
+      double theta2 = atan2(b * sin(phi), a * cos(phi));
+      s3 = sin(theta2) * sin(theta2) * sin(theta2);
+      c3 = cos(theta2) * cos(theta2) * cos(theta2);
+      phi = atan2(z + ep2 * b * s3, p - e2 * a * c3);
+
+      *lat = phi;
+      double s_phi = sin(phi);
+      double c_phi = cos(phi);
+      double N = a / sqrt(1.0 - e2 * s_phi * s_phi);
+
+      if (fabs(c_phi) > 0.01) {
+         *heig = (p / c_phi) - N;
+      } else {
+         *heig = (z / s_phi) - N * (1.0 - e2);
+      }
    }
    else {
-      *lat = 0.0;
+      *lat = (z >= 0.0) ? (M_PI / 2.0) : (-M_PI / 2.0);
       *long0 = 0.0;
-      *heig = 0.0;
+      *heig = (z >= 0.0) ? (z - 6356752.3142) : (-z - 6356752.3142);
    }
-/*  lat:=atan(z/(rh*(1.0 - E2))); */
-/*  heig:=sqrt(h + z*z) - EARTHA; */
 } /* end wgs84r() */
 
 // returns: 0=ok, -1=error
@@ -451,48 +461,69 @@ static void posrs41(const byte b[], uint32_t b_len, uint32_t p)
    x = (double)getint32(b, b_len, p)*0.01;
    y = (double)getint32(b, b_len, p+4UL)*0.01;
    z = (double)getint32(b, b_len, p+8UL)*0.01;
-#if 0
-/* new X sonde are different, handle sats outside this function */
-   uint8_t sats = getcard16(b, b_len, p+18UL)&255UL;
-   Serial.printf("x:%g, y:%g, z:%g  sats:%d\n", x, y, z, sats);
-   si->sats = sats;
-   if( sats<4 || (x==0 && y==0 && z==0) ) {
-      // RS41 sometimes sends frame with all 0
-      // or, if sats<4, data is simply garbage. do not use.
-      if(si->validPos) si->validPos |= 0x80; // flag as old
-      return;
-   }
-#else
+
    Serial.printf("x:%g, y:%g, z:%g\n", x, y, z);
    if( x==0 && y==0 && z==0 ) {
       // RS41 sometimes sends frame with all 0
       if(si->validPos) si->validPos |= 0x80; // flag as old
       return;           
    }          
-#endif
 
    wgs84r(x, y, z, &lat, &long0, &heig);
-   float new_lat = (float)(X2C_DIVL(lat,1.7453292519943E-2));
-   float new_lon = (float)(X2C_DIVL(long0,1.7453292519943E-2));
+   float new_lat = (float)(lat * (180.0 / M_PI));
+   float new_lon = (float)(long0 * (180.0 / M_PI));
+   float new_alt = (float)heig;
 
-   // Urban Multipath & Kinematic Outlier Filter
-   if (Sonde::isGpsOutlier(si->lat, si->lon, new_lat, new_lon) || heig > 55000.0 || heig < -500.0) {
-      Serial.printf(" [GPS Outlier Rejected (lat:%.5f, lon:%.5f, alt:%.1f)] ", new_lat, new_lon, (float)heig);
-      if (si->validPos) si->validPos |= 0x80; // keep previous position as old
+   // Plausibility Check
+   if (isnan(new_lat) || isnan(new_lon) || isnan(new_alt) ||
+       new_lat < -90.0f || new_lat > 90.0f || new_lon < -180.0f || new_lon > 180.0f ||
+       new_alt > 55000.0f || new_alt < -500.0f) {
+      Serial.printf(" [GPS Out of bounds: lat:%.5f, lon:%.5f, alt:%.1f] ", new_lat, new_lon, new_alt);
+      if (si->validPos) si->validPos |= 0x80;
       return;
+   }
+
+   // Kinematic Consistency Filter: check for multipath jumps & smooth jitter
+   if (VALIDPOS(si->validPos) && !(si->validPos & 0x80)) {
+      float dlat_m = (new_lat - si->lat) * 111320.0f;
+      float dlon_m = (new_lon - si->lon) * 111320.0f * cosf(si->lat * 0.0174532925f);
+      float horizontal_jump = sqrtf(dlat_m * dlat_m + dlon_m * dlon_m);
+      float vertical_jump = fabsf(new_alt - si->alt);
+
+      // Physical limit for weather balloon (max horiz ~180 m/s, max vert ~35 m/s)
+      if (horizontal_jump > 200.0f || vertical_jump > 60.0f) {
+         Serial.printf(" [GPS Kinematic Outlier: dH=%.1fm, dV=%.1fm] ", horizontal_jump, vertical_jump);
+         si->validPos |= 0x80; // keep previous position as old
+         return;
+      }
+
+      // Adaptive satellite-weighted Alpha-Beta smoothing filter to minimize GPS multipath jitter
+      float alpha = 0.85f;
+      if (si->sats >= 10) {
+         alpha = 0.85f; // High satellite count, low geometric dilution of precision
+      } else if (si->sats >= 6) {
+         alpha = 0.65f;
+      } else if (si->sats >= 4) {
+         alpha = 0.45f;
+      } else {
+         alpha = 0.20f;
+      }
+
+      new_lat = si->lat + alpha * (new_lat - si->lat);
+      new_lon = si->lon + alpha * (new_lon - si->lon);
+      new_alt = si->alt + alpha * (new_alt - si->alt);
    }
 
    si->lat = new_lat;
    Serial.print(" ");
-   Serial.print(si->lat);
+   Serial.print(si->lat, 5);
    Serial.print(" ");
    si->lon = new_lon;
-   Serial.print(si->lon);
-   if (heig<1.E+5 && heig>(-1.E+5)) {
-      Serial.print(" ");
-      Serial.print((uint32_t)heig);
-      Serial.print("m");
-   }
+   Serial.print(si->lon, 5);
+   Serial.print(" ");
+   Serial.print(new_alt, 1);
+   Serial.print("m");
+
    /*speed */
    vx = (double)getint16(b, b_len, p+12UL)*0.01;
    vy = (double)getint16(b, b_len, p+14UL)*0.01;
@@ -500,7 +531,7 @@ static void posrs41(const byte b[], uint32_t b_len, uint32_t p)
    vn = (-(vx*sin(lat)*cos(long0))-vy*sin(lat)*sin(long0))+vz*cos(lat);
    ve = -(vx*sin(long0))+vy*cos(long0);
    vu = vx*cos(lat)*cos(long0)+vy*cos(lat)*sin(long0)+vz*sin(lat);
-   dir = X2C_DIVL(atang2(vn, ve),1.7453292519943E-2);
+   dir = atan2(ve, vn) * (180.0 / M_PI);
    if (dir<0.0) dir = 360.0+dir;
    si->dir = dir;
    Serial.print(" ");
@@ -512,7 +543,7 @@ static void posrs41(const byte b[], uint32_t b_len, uint32_t p)
    Serial.print((float)vu);
    si->vs = vu;
    Serial.print("m/s ");
-   si->alt = heig;
+   si->alt = new_alt;
    if( 0==(int)(lat*10000) && 0==(int)(long0*10000) ) {
       if(si->validPos) {
 	// we have an old position, so keep previous position and mark it as old

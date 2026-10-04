@@ -1180,6 +1180,9 @@ int8_t SX1278FSK::setMaxCurrent(uint8_t rate) { return 0; }
 uint8_t SX1278FSK::receive() {
     sx126x_clear_irq_status(NULL, SX126X_IRQ_ALL);
     emulated_rx_read_ptr = 0;
+    // Maintain maximum RF sensitivity: Semtech SX1262 Rx Boosted Gain (0x08AC = 0x96)
+    uint8_t rx_boost = 0x96;
+    sx126x_write_register(NULL, 0x08AC, &rx_boost, 1);
     if (longPacketMode) {
         sx126x_long_pkt_set_rx_with_timeout_in_rtc_step(NULL, &pktRxState, SX126X_RX_CONTINUOUS);
     } else {
