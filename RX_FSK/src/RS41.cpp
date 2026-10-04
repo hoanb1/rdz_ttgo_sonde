@@ -1006,7 +1006,7 @@ static uint8_t scramble[64] = {150U,131U,62U,81U,177U,73U,8U,152U,50U,5U,89U,
 int RS41::receive() {
 	memcpy(data, rs41SetupCfg.sync_data, 8);
 	sx1278.setPayloadLength(RS41MAXLEN - 8); 
-	int e = sx1278.receivePacketTimeout(1000, data + 8);
+	int e = sx1278.receivePacketTimeout(1250, data + 8);
 	if(e == 1) { return RX_TIMEOUT; } 
 
         for(int i = 8; i < RS41MAXLEN; i++) { data[i] = reverse(data[i]); }

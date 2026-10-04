@@ -970,12 +970,17 @@ uint8_t SX1278FSK::ON() {
     Serial.println("ON sx1262");
     sx126x_reset(NULL);
     delay(10);
-    sx126x_set_dio3_as_tcxo_ctrl(NULL, SX126X_TCXO_CTRL_1_6V, 128); // 2ms TCXO
+    // Heltec WiFi LoRa 32 V3 uses 1.8V TCXO on DIO3
+    sx126x_set_dio3_as_tcxo_ctrl(NULL, SX126X_TCXO_CTRL_1_8V, 128); // 2ms TCXO
     delay(5);
     sx126x_set_standby(NULL, SX126X_STANDBY_CFG_RC);
     sx126x_set_reg_mode(NULL, SX126X_REG_MODE_DCDC);
+    // CRITICAL: Configure SX1262 DIO2 to actively control onboard RF antenna switch!
+    sx126x_set_dio2_as_rf_sw_ctrl(NULL, true);
     sx126x_set_pkt_type(NULL, SX126X_PKT_TYPE_GFSK);
-    sx126x_cal_img(NULL, 0x61, 0x6F);
+    // Image calibration for 400-412 MHz radiosonde band (step 4 MHz: 100 to 103)
+    sx126x_cal_img(NULL, 0x64, 0x67);
+    // Semtech SX1262 Rx Boosted Gain (0x08AC = 0x96) for maximum RF sensitivity (+2..3 dB)
     uint8_t val = 0x96;
     sx126x_write_register(NULL, 0x08AC, &val, 1);
     sx126x_clear_device_errors(NULL);
@@ -1073,7 +1078,13 @@ float SX1278FSK::getBitrate() {
 uint8_t SX1278FSK::setRxBandwidth(float bw) {
     currentRxBw = bw;
     modParams.fdev_in_hz = 2400;
-    modParams.bw_dsb_param = getBandwidth(bw * 2);
+    float dsb_bw = bw * 2;
+    // For narrowband radiosondes (<= 9600 bps like RS41 at 4.8 kbps):
+    // Clamping overly broad bandwidth settings (e.g., 50000 Hz) to 23400 Hz DSB prevents an ~7-8 dB noise floor degradation
+    if (modParams.br_in_bps <= 9600 && dsb_bw > 30000) {
+        dsb_bw = 23400;
+    }
+    modParams.bw_dsb_param = getBandwidth(dsb_bw);
     sx126x_set_gfsk_mod_params(NULL, &modParams);
     return 0;
 }
@@ -1123,7 +1134,8 @@ uint8_t SX1278FSK::getSyncConf() { return 0; }
 
 uint8_t SX1278FSK::setPreambleDetect(uint8_t conf) {
     if (conf & 0x80) {
-        pktParams.preamble_detector = SX126X_GFSK_PREAMBLE_DETECTOR_MIN_16BITS;
+        // Use 8-bit minimum preamble detector for much higher sensitivity on noisy/weak preambles
+        pktParams.preamble_detector = SX126X_GFSK_PREAMBLE_DETECTOR_MIN_8BITS;
     } else {
         pktParams.preamble_detector = SX126X_GFSK_PREAMBLE_DETECTOR_OFF;
     }
@@ -1183,6 +1195,8 @@ uint8_t SX1278FSK::receive() {
     // Maintain maximum RF sensitivity: Semtech SX1262 Rx Boosted Gain (0x08AC = 0x96)
     uint8_t rx_boost = 0x96;
     sx126x_write_register(NULL, 0x08AC, &rx_boost, 1);
+    // Ensure SX1262 DIO2 actively engages antenna RF switch into RX path
+    sx126x_set_dio2_as_rf_sw_ctrl(NULL, true);
     if (longPacketMode) {
         sx126x_long_pkt_set_rx_with_timeout_in_rtc_step(NULL, &pktRxState, SX126X_RX_CONTINUOUS);
     } else {
@@ -1233,7 +1247,7 @@ uint8_t SX1278FSK::receivePacketTimeout(uint32_t wait, byte *data) {
                 di += read_bytes;
                 last_data_time = millis();
             } else {
-                delay(5);
+                delay(1);
             }
         }
         
