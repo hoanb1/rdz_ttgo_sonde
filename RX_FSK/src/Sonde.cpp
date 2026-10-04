@@ -19,6 +19,7 @@
 #include <Wire.h>
 #include "conn-mqtt.h"
 #include "conn-sondeseeker.h"
+#include "lastpos.h"
 
 RXTask rxtask = { -1, -1, -1, 0xFFFF, 0 };
 
@@ -798,6 +799,9 @@ uint8_t Sonde::timeoutEvent(SondeInfo *si) {
 		}
 		if (norx_to >= 0 && now - si->norxStart >= (uint32_t)norx_to) {
 			LOG_I(TAG, "Sonde::timeoutEvent: NORX\n");
+			if (VALIDPOS(si->d.validPos)) {
+				updateLastPos(si, true);
+			}
 			return EVT_NORXTO;
 		}
 	}

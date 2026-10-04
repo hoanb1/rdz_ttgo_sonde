@@ -39,6 +39,7 @@
 
 #include "src/pmu.h"
 #include "src/user.h"
+#include "src/lastpos.h"
 
 
 /* Data exchange connectors */
@@ -645,6 +646,9 @@ void addSondeStatus(char *ptr, int i)
   if (s->d.validID && (TYPE_IS_DFM(s->type) || TYPE_IS_METEO(s->type) || s->type == STYPE_MP3H) ) {
     sprintf(ptr + strlen(ptr), " (ser: %s)", s->d.ser);
   }
+  if (s->d.validPos & 0x80) {
+    sprintf(ptr + strlen(ptr), " <span style=\"color:#e11d48;font-weight:bold;\">[Flash Saved]</span>");
+  }
   sprintf(ptr + strlen(ptr), "</td></tr><tr><td>QTH: %.6f,%.6f h=%.0fm</td></tr>\n", s->d.lat, s->d.lon, s->d.alt);
   const time_t t = s->d.time;
   ts = *gmtime(&t);
@@ -718,6 +722,11 @@ const char *createLiveJson() {
   }
 
   sprintf(ptr + strlen(ptr), ", \"debug\": \"%s\", \"raw_hex\": \"%s\"", RS41::last_rx_debug, RS41::last_rx_hex);
+
+  if (lastPos.valid) {
+    strcat(ptr, ", \"lastpos\": ");
+    lastPosToJson(ptr + strlen(ptr), 512);
+  }
 
   strcat(ptr, "}");
   return message;
@@ -1473,6 +1482,11 @@ void SetupAsyncServer() {
   });
   server.on("/live.json", HTTP_GET,  [](AsyncWebServerRequest * request) {
     request->send(200, "text/json", createLiveJson());
+  });
+  server.on("/lastpos.json", HTTP_GET, [](AsyncWebServerRequest * request) {
+    char buf[768];
+    lastPosToJson(buf, sizeof(buf));
+    request->send(200, "application/json", buf);
   });
   server.on("/livemap.html", HTTP_GET, [](AsyncWebServerRequest * request) {
     request->send(LittleFS, "/livemap.html", String(), false, processor);
@@ -2367,6 +2381,39 @@ void setup()
   // == setup default channel list if qrg.txt read fails =========== //
   sonde.clearSonde();
   setupChannelList();
+
+  if (loadLastPos()) {
+    LOG_I(TAG, "Loaded last-known sonde position from flash: ID %s at %.6f,%.6f alt=%.1fm\n",
+          lastPos.id, lastPos.lat, lastPos.lon, lastPos.alt);
+    if (sonde.nSonde > 0) {
+      int matchIdx = 0;
+      for (int i = 0; i < sonde.nSonde; i++) {
+        if (fabsf(sonde.sondeList[i].freq - lastPos.freq) < 0.01f) {
+          matchIdx = i;
+          break;
+        }
+      }
+      SondeInfo *si = &sonde.sondeList[matchIdx];
+      strncpy(si->d.id, lastPos.id, sizeof(si->d.id) - 1);
+      si->d.validID = true;
+      strncpy(si->d.typestr, lastPos.typestr, sizeof(si->d.typestr) - 1);
+      si->d.lat = lastPos.lat;
+      si->d.lon = lastPos.lon;
+      si->d.alt = lastPos.alt;
+      si->d.vs = lastPos.vs;
+      si->d.hs = lastPos.hs;
+      si->d.dir = lastPos.dir;
+      si->d.sats = lastPos.sats;
+      si->d.time = lastPos.time;
+      si->d.frame = lastPos.frame;
+      si->d.batteryVoltage = lastPos.batt;
+      si->d.pred_lat = lastPos.pred_lat;
+      si->d.pred_lon = lastPos.pred_lon;
+      si->d.pred_alt = lastPos.pred_alt;
+      si->d.pred_valid = (lastPos.pred_lat != 0.0f);
+      si->d.validPos = 0x80 | 0x7f; // Mark as saved in flash
+    }
+  }
   /// not here, done by sonde.setup(): rs41.setup();
   // == setup default channel list if qrg.txt read fails =========== //
 #ifndef DISABLE_SX1278
@@ -2542,6 +2589,7 @@ void loopDecoder() {
   SondeInfo *s = &sonde.sondeList[rxtask.receiveSonde];
   if ((res & 0xff) == 0) {
     sonde.updateLandingPrediction(s);
+    updateLastPos(s);
   }
   if ((res & 0xff) == 0 && connected) {
     //Send a packet with position information

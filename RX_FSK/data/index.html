@@ -31,7 +31,46 @@
         .catch(error => {
             console.error('Error fetching subsystem status:', error);
         });
-  } 
+    fetchLastPos();
+  }
+  function fetchLastPos() {
+    fetch('/lastpos.json')
+      .then(response => response.json())
+      .then(d => {
+        const card = document.getElementById('lastpos-card');
+        if (!card) return;
+        if (!d.valid) {
+          card.style.display = 'none';
+          return;
+        }
+        card.style.display = 'block';
+        document.getElementById('lp-id').textContent = d.id;
+        document.getElementById('lp-type').textContent = d.type;
+        document.getElementById('lp-freq').textContent = Number(d.freq).toFixed(3);
+        document.getElementById('lp-coords').textContent = Number(d.lat).toFixed(6) + ', ' + Number(d.lon).toFixed(6);
+        document.getElementById('lp-alt').textContent = Number(d.alt).toFixed(1);
+        document.getElementById('lp-vs').textContent = Number(d.vs).toFixed(1);
+        document.getElementById('lp-hs').textContent = (Number(d.hs) * 3.6).toFixed(1);
+        document.getElementById('lp-dir').textContent = Math.round(Number(d.dir));
+        if (d.saved) {
+          const dt = new Date(d.saved * 1000);
+          document.getElementById('lp-saved-time').textContent = dt.toLocaleString();
+        }
+        if (d.pred_lat && Math.abs(d.pred_lat) > 0.001) {
+          document.getElementById('lp-pred-row').style.display = 'table-row';
+          document.getElementById('lp-pred-coords').textContent = Number(d.pred_lat).toFixed(6) + ', ' + Number(d.pred_lon).toFixed(6);
+          document.getElementById('lp-pred-alt').textContent = Number(d.pred_alt).toFixed(0);
+        } else {
+          document.getElementById('lp-pred-row').style.display = 'none';
+        }
+        document.getElementById('lp-maps-btn').href = d.maps_url || ('https://www.google.com/maps/search/?api=1&query=' + d.lat + ',' + d.lon);
+        document.getElementById('lp-osm-btn').href = d.osm_url || ('https://www.openstreetmap.org/?mlat=' + d.lat + '&mlon=' + d.lon + '&zoom=16');
+        document.getElementById('lp-sh-btn').href = 'https://tracker.sondehub.org/' + d.id;
+      })
+      .catch(error => {
+        console.error('Error fetching lastpos:', error);
+      });
+  }
   function selTab(evt, id) {
       var i, tabcontent, tablinks;
       tabcontent = document.getElementsByClassName("tabcontent");
@@ -115,6 +154,25 @@
  </tr>
 </tbody>
 </table>
+
+<div id="lastpos-card" style="margin-top:16px;padding:14px 16px;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:none;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
+    <span style="font-weight:600;color:#0f172a;font-size:15px;">Tọa độ bóng cuối cùng (lưu trong Flash)</span>
+    <span id="lp-saved-time" style="font-size:12px;color:#64748b;"></span>
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:12px;">
+    <tr><td style="width:35%;color:#475569;padding:4px 0;">Mã bóng (ID):</td><td><b id="lp-id" style="color:#0f172a;"></b> (<span id="lp-type"></span>, <span id="lp-freq"></span> MHz)</td></tr>
+    <tr><td style="color:#475569;padding:4px 0;">Tọa độ GPS:</td><td><b id="lp-coords" style="color:#2563eb;font-size:15px;"></b></td></tr>
+    <tr><td style="color:#475569;padding:4px 0;">Độ cao cuối:</td><td><b id="lp-alt" style="color:#0f172a;"></b> m</td></tr>
+    <tr><td style="color:#475569;padding:4px 0;">Vận tốc / Hướng:</td><td>Rơi: <span id="lp-vs"></span> m/s | Ngang: <span id="lp-hs"></span> km/h (<span id="lp-dir"></span>&deg;)</td></tr>
+    <tr id="lp-pred-row" style="display:none;"><td style="color:#475569;padding:4px 0;">Dự đoán tiếp đất:</td><td><b id="lp-pred-coords" style="color:#dc2626;"></b> (Độ cao: <span id="lp-pred-alt"></span>m)</td></tr>
+  </table>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a id="lp-maps-btn" href="#" target="_blank" class="button" style="background:#2563eb;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">Google Maps (Dẫn đường)</a>
+    <a id="lp-osm-btn" href="#" target="_blank" class="button" style="background:#059669;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">OpenStreetMap</a>
+    <a id="lp-sh-btn" href="#" target="_blank" class="button" style="background:#475569;color:#ffffff;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">SondeHub Tracker</a>
+  </div>
+</div>
 
 <!--</div>
 <div class="external-links">
