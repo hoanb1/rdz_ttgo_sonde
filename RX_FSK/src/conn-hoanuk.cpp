@@ -41,21 +41,21 @@ enum HoanUKState {
 };
 
 static HoanUKState huk_state = HUK_DISCONNECTED;
-static time_t huk_last_state_change = 0;
+static unsigned long huk_last_state_change = 0;
 static char huk_status_msg[128] = "Disabled";
 static unsigned long huk_last_send = 0;
 
+// NOTE: DO NOT call LOG_I / LOG_W / WiFiUDP from inside this lwIP DNS callback!
+// Doing so from the lwIP tcpip task causes stack overflow and deadlocks lwIP.
 static void _huk_dns_found(const char *name, const ip_addr_t *ipaddr, void *arg) {
     if (ipaddr) {
         hoanuk_ipaddr = *ipaddr;
         huk_state = HUK_DNSRESOLVED;
-        LOG_I(TAG, "DNS resolved for %s", name);
     } else {
         memset(&hoanuk_ipaddr, 0, sizeof(hoanuk_ipaddr));
         huk_state = HUK_ERROR_RETRY;
-        huk_last_state_change = 0;
-        snprintf(huk_status_msg, sizeof(huk_status_msg), "DNS failed for %s", name);
-        LOG_W(TAG, "DNS resolution failed for %s", name);
+        huk_last_state_change = millis() / 1000;
+        snprintf(huk_status_msg, sizeof(huk_status_msg), "DNS failed for %s", name ? name : "host");
     }
 }
 
@@ -79,11 +79,11 @@ void ConnHoanUK::netsetup() {
         return;
     }
     huk_state = HUK_DISCONNECTED;
-    huk_last_state_change = 0;
+    huk_last_state_change = millis() / 1000;
     snprintf(huk_status_msg, sizeof(huk_status_msg), "Connecting to %s:%d",
              sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk",
              sonde.config.hoanuk.port > 0 ? sonde.config.hoanuk.port : 80);
-    LOG_I(TAG, "Network ready, connecting to hoan.uk at %s:%d",
+    LOG_I(TAG, "Network ready, target hoan.uk at %s:%d\n",
           sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk",
           sonde.config.hoanuk.port > 0 ? sonde.config.hoanuk.port : 80);
     hoanuk_client_fsm();
@@ -95,14 +95,22 @@ void ConnHoanUK::netshutdown() {
         hoanuk_sock = -1;
     }
     huk_state = HUK_DISCONNECTED;
+    huk_last_state_change = millis() / 1000;
     snprintf(huk_status_msg, sizeof(huk_status_msg), "Disconnected");
 }
 
 void ConnHoanUK::hoanuk_client_fsm() {
     if (!sonde.config.hoanuk.active) return;
+    if (WiFi.status() != WL_CONNECTED) {
+        if (hoanuk_sock >= 0) {
+            close(hoanuk_sock);
+            hoanuk_sock = -1;
+        }
+        huk_state = HUK_DISCONNECTED;
+        return;
+    }
 
-    time_t now;
-    time(&now);
+    unsigned long now = millis() / 1000;
 
     switch (huk_state) {
         case HUK_ERROR_RETRY:
@@ -110,6 +118,7 @@ void ConnHoanUK::hoanuk_client_fsm() {
                 huk_last_state_change = now;
             } else if (now - huk_last_state_change > HOANUK_ERROR_RETRY_DELAY) {
                 huk_state = HUK_DISCONNECTED;
+                huk_last_state_change = now;
             }
             break;
 
@@ -117,15 +126,16 @@ void ConnHoanUK::hoanuk_client_fsm() {
             const char *host = sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk";
             if (ipaddr_aton(host, &hoanuk_ipaddr)) {
                 huk_state = HUK_DNSRESOLVED;
-                LOG_I(TAG, "Host %s is IP literal", host);
+                huk_last_state_change = now;
             } else {
                 huk_state = HUK_DNSLOOKUP;
+                huk_last_state_change = now;
                 err_t res = dns_gethostbyname_addrtype(host, &hoanuk_ipaddr, _huk_dns_found, NULL, LWIP_DNS_ADDRTYPE_IPV4);
                 if (res == ERR_OK) {
                     huk_state = HUK_DNSRESOLVED;
                 } else if (res != ERR_INPROGRESS) {
                     huk_state = HUK_ERROR_RETRY;
-                    huk_last_state_change = 0;
+                    huk_last_state_change = now;
                     snprintf(huk_status_msg, sizeof(huk_status_msg), "DNS failed for %s", host);
                     break;
                 } else {
@@ -136,14 +146,22 @@ void ConnHoanUK::hoanuk_client_fsm() {
         }
 
         case HUK_DNSLOOKUP:
-            if (huk_state == HUK_DNSLOOKUP) break;
+            if (huk_state == HUK_DNSLOOKUP) {
+                if (now - huk_last_state_change > 10) {
+                    // DNS timeout
+                    huk_state = HUK_ERROR_RETRY;
+                    huk_last_state_change = now;
+                    snprintf(huk_status_msg, sizeof(huk_status_msg), "DNS timeout");
+                }
+                break;
+            }
             // Fall through if switched to HUK_DNSRESOLVED
 
         case HUK_DNSRESOLVED: {
             hoanuk_sock = socket(AF_INET, SOCK_STREAM, 0);
             if (hoanuk_sock < 0) {
                 huk_state = HUK_ERROR_RETRY;
-                huk_last_state_change = 0;
+                huk_last_state_change = now;
                 snprintf(huk_status_msg, sizeof(huk_status_msg), "Socket error %d", errno);
                 break;
             }
@@ -168,11 +186,12 @@ void ConnHoanUK::hoanuk_client_fsm() {
                     close(hoanuk_sock);
                     hoanuk_sock = -1;
                     huk_state = HUK_ERROR_RETRY;
-                    huk_last_state_change = 0;
+                    huk_last_state_change = now;
                     snprintf(huk_status_msg, sizeof(huk_status_msg), "Connect error %d", errno);
                 }
             } else {
                 huk_state = HUK_CONN_IDLE;
+                huk_last_state_change = now;
                 snprintf(huk_status_msg, sizeof(huk_status_msg), "Connected to %s:%d",
                          sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk", port);
             }
@@ -184,7 +203,7 @@ void ConnHoanUK::hoanuk_client_fsm() {
                 close(hoanuk_sock);
                 hoanuk_sock = -1;
                 huk_state = HUK_ERROR_RETRY;
-                huk_last_state_change = 0;
+                huk_last_state_change = now;
                 snprintf(huk_status_msg, sizeof(huk_status_msg), "Connect timeout");
                 break;
             }
@@ -193,14 +212,14 @@ void ConnHoanUK::hoanuk_client_fsm() {
             FD_SET(hoanuk_sock, &fdset);
             FD_ZERO(&fdeset);
             FD_SET(hoanuk_sock, &fdeset);
-            struct timeval selto = {0};
+            struct timeval selto = {0, 0};
 
             int res = select(hoanuk_sock + 1, NULL, &fdset, &fdeset, &selto);
             if (res < 0) {
                 close(hoanuk_sock);
                 hoanuk_sock = -1;
                 huk_state = HUK_ERROR_RETRY;
-                huk_last_state_change = 0;
+                huk_last_state_change = now;
                 snprintf(huk_status_msg, sizeof(huk_status_msg), "Select error %d", errno);
             } else if (res > 0) {
                 int sockerr = 0;
@@ -209,14 +228,15 @@ void ConnHoanUK::hoanuk_client_fsm() {
                     close(hoanuk_sock);
                     hoanuk_sock = -1;
                     huk_state = HUK_ERROR_RETRY;
-                    huk_last_state_change = 0;
+                    huk_last_state_change = now;
                     snprintf(huk_status_msg, sizeof(huk_status_msg), "Socket err %d", sockerr);
                 } else {
                     huk_state = HUK_CONN_IDLE;
+                    huk_last_state_change = now;
                     int port = sonde.config.hoanuk.port > 0 ? sonde.config.hoanuk.port : 80;
                     snprintf(huk_status_msg, sizeof(huk_status_msg), "Connected to %s:%d",
                              sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk", port);
-                    LOG_I(TAG, "Connected to %s:%d", sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk", port);
+                    LOG_I(TAG, "Connected to %s:%d\n", sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk", port);
                 }
             }
             break;
@@ -224,15 +244,16 @@ void ConnHoanUK::hoanuk_client_fsm() {
 
         case HUK_CONN_IDLE:
         case HUK_CONN_SENDING:
-            // Check if connection is still alive by receiving leftover data
+            // Check if connection is still alive by receiving leftover data or detecting disconnect
             if (hoanuk_sock >= 0) {
-                char rx_buf[256];
+                char rx_buf[128];
                 int r = recv(hoanuk_sock, rx_buf, sizeof(rx_buf) - 1, MSG_DONTWAIT);
-                if (r == 0) {
-                    // Closed by server
+                if (r == 0 || (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+                    // Closed by server or socket error
                     close(hoanuk_sock);
                     hoanuk_sock = -1;
                     huk_state = HUK_DISCONNECTED;
+                    huk_last_state_change = now;
                 }
             }
             break;
@@ -276,13 +297,13 @@ void ConnHoanUK::sendBinaryPayload(const char *deviceId, const uint8_t *payload,
         req_len += len;
         int sent = send(hoanuk_sock, http_req, req_len, 0);
         if (sent < 0) {
-            LOG_W(TAG, "Failed to send binary telemetry to hoan.uk: errno %d", errno);
+            LOG_W(TAG, "Failed to send binary telemetry to hoan.uk: errno %d\n", errno);
             close(hoanuk_sock);
             hoanuk_sock = -1;
             huk_state = HUK_ERROR_RETRY;
-            huk_last_state_change = 0;
+            huk_last_state_change = millis() / 1000;
         } else {
-            LOG_I(TAG, "Ingested %d bytes binary telemetry (%d bytes body) for %s to hoan.uk", sent, len, deviceId);
+            LOG_I(TAG, "Ingested %d bytes binary telemetry (%d bytes body) for %s to hoan.uk\n", sent, len, deviceId);
             snprintf(huk_status_msg, sizeof(huk_status_msg), "Ingested BIN OK (%lu)", millis() / 1000);
         }
     }
@@ -319,21 +340,30 @@ void ConnHoanUK::sendPayload(const char *json_body) {
 
     int sent = send(hoanuk_sock, http_req, req_len, 0);
     if (sent < 0) {
-        LOG_W(TAG, "Failed to send telemetry to hoan.uk: errno %d", errno);
+        LOG_W(TAG, "Failed to send telemetry to hoan.uk: errno %d\n", errno);
         close(hoanuk_sock);
         hoanuk_sock = -1;
         huk_state = HUK_ERROR_RETRY;
-        huk_last_state_change = 0;
+        huk_last_state_change = millis() / 1000;
     } else {
-        LOG_I(TAG, "Ingested %d bytes telemetry to hoan.uk", sent);
+        LOG_I(TAG, "Ingested %d bytes telemetry to hoan.uk\n", sent);
         snprintf(huk_status_msg, sizeof(huk_status_msg), "Ingested OK (%lu)", millis() / 1000);
     }
 }
 
 void ConnHoanUK::updateSonde(SondeInfo *si) {
     if (!sonde.config.hoanuk.active) return;
+
+    // When idle (no sonde received), only run FSM once per second to avoid hogging CPU
+    static unsigned long last_idle_fsm = 0;
+    if (!si) {
+        if (millis() - last_idle_fsm < 1000) return;
+        last_idle_fsm = millis();
+        hoanuk_client_fsm();
+        return;
+    }
+
     hoanuk_client_fsm();
-    if (!si) return;
 
     // Rate-limit to max 1 packet per 2 seconds
     if (millis() - huk_last_send < 2000) return;
