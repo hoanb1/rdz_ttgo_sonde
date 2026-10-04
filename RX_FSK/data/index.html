@@ -38,12 +38,17 @@
       .then(response => response.json())
       .then(d => {
         const card = document.getElementById('lastpos-card');
+        const emptyDiv = document.getElementById('lp-empty');
+        const contentDiv = document.getElementById('lp-content');
         if (!card) return;
+        card.style.display = 'block';
         if (!d.valid) {
-          card.style.display = 'none';
+          if (emptyDiv) emptyDiv.style.display = 'block';
+          if (contentDiv) contentDiv.style.display = 'none';
           return;
         }
-        card.style.display = 'block';
+        if (emptyDiv) emptyDiv.style.display = 'none';
+        if (contentDiv) contentDiv.style.display = 'block';
         document.getElementById('lp-id').textContent = d.id;
         document.getElementById('lp-type').textContent = d.type;
         document.getElementById('lp-freq').textContent = Number(d.freq).toFixed(3);
@@ -158,22 +163,25 @@
 </tbody>
 </table>
 
-<div id="lastpos-card" style="margin-top:16px;padding:14px 16px;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:none;">
+<div id="lastpos-card" style="margin-top:16px;padding:14px 16px;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
     <span style="font-weight:600;color:#0f172a;font-size:15px;">Tọa độ bóng cuối cùng (lưu trong Flash)</span>
     <span id="lp-saved-time" style="font-size:12px;color:#64748b;"></span>
   </div>
-  <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:12px;">
-    <tr><td style="width:35%;color:#475569;padding:4px 0;">Mã bóng (ID):</td><td><b id="lp-id" style="color:#0f172a;"></b> (<span id="lp-type"></span>, <span id="lp-freq"></span> MHz)</td></tr>
-    <tr><td style="color:#475569;padding:4px 0;">Tọa độ GPS:</td><td><b id="lp-coords" style="color:#2563eb;font-size:15px;"></b></td></tr>
-    <tr><td style="color:#475569;padding:4px 0;">Độ cao cuối:</td><td><b id="lp-alt" style="color:#0f172a;"></b> m</td></tr>
-    <tr><td style="color:#475569;padding:4px 0;">Vận tốc / Hướng:</td><td>Rơi: <span id="lp-vs"></span> m/s | Ngang: <span id="lp-hs"></span> km/h (<span id="lp-dir"></span>&deg;)</td></tr>
-    <tr id="lp-pred-row" style="display:none;"><td style="color:#475569;padding:4px 0;">Dự đoán tiếp đất:</td><td><b id="lp-pred-coords" style="color:#dc2626;"></b> (Độ cao: <span id="lp-pred-alt"></span>m)</td></tr>
-  </table>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;">
-    <a id="lp-maps-btn" href="#" target="_blank" class="button" style="background:#2563eb;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">Google Maps (Dẫn đường)</a>
-    <a id="lp-osm-btn" href="#" target="_blank" class="button" style="background:#059669;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">OpenStreetMap</a>
-    <a id="lp-sh-btn" href="#" target="_blank" class="button" style="background:#475569;color:#ffffff;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">SondeHub Tracker</a>
+  <div id="lp-empty" style="color:#64748b;font-size:13px;padding:6px 0;">Chưa có dữ liệu tọa độ lưu trong Flash (hệ thống sẽ tự động lưu khi thu nhận được bóng thám không).</div>
+  <div id="lp-content" style="display:none;">
+    <table style="width:100vw;max-width:1000px;border-collapse:collapse;font-size:14px;margin-bottom:12px;">
+      <tr><td style="width:140px;color:#475569;padding:4px 0;">Mã bóng (ID):</td><td><b id="lp-id" style="color:#0f172a;"></b> (<span id="lp-type"></span>, <span id="lp-freq"></span> MHz)</td></tr>
+      <tr><td style="color:#475569;padding:4px 0;">Tọa độ GPS:</td><td><b id="lp-coords" style="color:#2563eb;font-size:15px;"></b></td></tr>
+      <tr><td style="color:#475569;padding:4px 0;">Độ cao cuối:</td><td><b id="lp-alt" style="color:#0f172a;"></b> m</td></tr>
+      <tr><td style="color:#475569;padding:4px 0;">Vận tốc / Hướng:</td><td>Rơi: <span id="lp-vs"></span> m/s | Ngang: <span id="lp-hs"></span> km/h (<span id="lp-dir"></span>&deg;)</td></tr>
+      <tr id="lp-pred-row" style="display:none;"><td style="color:#475569;padding:4px 0;">Dự đoán tiếp đất:</td><td><b id="lp-pred-coords" style="color:#dc2626;"></b> (Độ cao: <span id="lp-pred-alt"></span>m)</td></tr>
+    </table>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <a id="lp-maps-btn" href="#" target="_blank" class="button" style="background:#2563eb;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">Google Maps (Dẫn đường)</a>
+      <a id="lp-osm-btn" href="#" target="_blank" class="button" style="background:#059669;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">OpenStreetMap</a>
+      <a id="lp-sh-btn" href="#" target="_blank" class="button" style="background:#475569;color:#ffffff;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">SondeHub Tracker</a>
+    </div>
   </div>
 </div>
 
