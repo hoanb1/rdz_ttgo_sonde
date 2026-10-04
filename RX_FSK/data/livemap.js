@@ -9,6 +9,10 @@ try {
 $(document).ready(function(){
 
   var map = L.map('map', { attributionControl: false, zoomControl: false });
+  window.map = map;
+  window.addEventListener('resize', function() { if (map) map.invalidateSize(); });
+  window.addEventListener('focus', function() { if (map) map.invalidateSize(); });
+  setTimeout(function() { if (map) map.invalidateSize(); }, 300);
   map.on('mousedown touchstart',function () { follow=false; });
 
   L.control.scale().addTo(map);
@@ -118,7 +122,9 @@ headtxt = function(data,stat) {
   $('#sonde_statbar').html('&nbsp;'+statbar);
 };
 
-map.addControl(new L.Control.Button([ { position: 'topleft', text: '🔙', href: 'index.html' } ]));
+  if (window.self === window.top) {
+    map.addControl(new L.Control.Button([ { position: 'topleft', text: '🔙', href: 'index.html#livemap' } ]));
+  }
   
 L.control.zoom({ position:'topleft' }).addTo(map);
 

@@ -77,7 +77,8 @@
       for(i=0; i<tabcontent.length; i++) {
           tabcontent[i].style.display = "none";
           var link = tabcontent[i].dataset.src;
-          if(link) {
+          var keep = tabcontent[i].dataset.keep;
+          if(link && !keep) {
               var iframe = tabcontent[i].getElementsByTagName("iframe")[0];
               if (iframe) iframe.setAttribute("src", "");
           }
@@ -91,11 +92,22 @@
           act.style.display = "flex";
           if (evt && evt.currentTarget) {
               evt.currentTarget.className += " active";
+          } else {
+              var tabLink = document.querySelector('.topnav a[href="#' + id.toLowerCase() + '"]');
+              if (tabLink) tabLink.className += " active";
           }
           var link = act.dataset.src;
           if(link) {
               var iframe = act.getElementsByTagName("iframe")[0];
-              if (iframe) iframe.setAttribute("src", link);
+              if (iframe && (!iframe.getAttribute("src") || iframe.getAttribute("src") === "")) {
+                  iframe.setAttribute("src", link);
+              } else if (iframe && iframe.contentWindow) {
+                  try {
+                      if (iframe.contentWindow.map && iframe.contentWindow.map.invalidateSize) {
+                          iframe.contentWindow.map.invalidateSize();
+                      }
+                  } catch(e) {}
+              }
           }
       }
       var x = document.getElementById("myTopnav");
@@ -118,7 +130,7 @@
 	<a href="#home" onclick="selTab(event,'Home');fetchStatus()" class="tablinks" id="defaultTab">Home</a>
 	<a href="#qrg" onclick="selTab(event,'QRG')" class="tablinks">QRG</a>
 	<a href="#data" onclick="selTab(event,'Data')" class="tablinks">Data</a>
-	<a href="#livemap" onclick="document.location.href='livemap.html'" class="tablinks">Livemap</a>
+	<a href="#livemap" onclick="selTab(event,'Livemap')" class="tablinks">Livemap</a>
 	<a href="#ctrl" onclick="selTab(event,'Control')" class="tablinks">Control</a>
 	<a href="#config" onclick="selTab(event,'Config')" class="tablinks">Config</a>
 	<a href="#wifi" onclick="selTab(event,'WiFi')" class="tablinks">WiFi</a>
@@ -208,9 +220,21 @@
 <div id="Control" class="tabcontent" data-src="control.html">
 	<iframe class="tci" src="" ></iframe>
 </div>
+
+<div id="Livemap" class="tabcontent" data-src="livemap.html" data-keep="true">
+	<iframe class="tci" src="" ></iframe>
+</div>
 </div>
 <script>
 window.addEventListener('DOMContentLoaded', function() {
+    var hash = window.location.hash;
+    if (hash) {
+        var targetLink = document.querySelector('.topnav a[href="' + hash + '"]');
+        if (targetLink) {
+            targetLink.click();
+            return;
+        }
+    }
     var dt = document.getElementById("defaultTab");
     if (dt) dt.click();
 });
