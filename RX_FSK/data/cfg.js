@@ -9,14 +9,19 @@ var cfgs = [
 [ "rxlon", "Receiver fixed longitude"],
 [ "rxalt", "Receiver fixed altitude"],
 [ "b2mute", "Button 2/medium press mutes LED/Buzzer (minutes)"],
+[ "", "Weak signal & Field recovery optimization (Thu sóng yếu & Tìm bóng)", "https://hoan.uk/weather/radiosonde" ],
+[ "rs41.posok", "RS41 accept frame on valid GPS/ID even if auxiliary sensor CRC fails (1=enable, 0=strict CRC)" ],
+[ "norx_sticky", "Sticky lock timeout when descending near ground (seconds, default 90, 0=disable)" ],
+[ "norx_sticky_alt", "Sticky lock altitude threshold (meters, default 3000)" ],
+[ "lastpos.active", "Save last-known GPS coordinates to Flash LittleFS (1=enable, 0=disable)" ],
+[ "lastpos.interval", "Minimum seconds between Flash writes (seconds, default 10)" ],
+[ "lastpos.alt_step", "Descent altitude step to trigger Flash write (meters, default 20)" ],
 [ "", "OLED/TFT display configuration", "https://github.com/dl9rdz/rdz_ttgo_sonde/wiki/Display-configuration" ],
 [ "screenfile", "Screen config (0=automatic; 1-5=predefined; other=custom)" ],
 [ "display", "Display screens (scan, default, ...)" ],
 [ "dispsaver", "Display saver (0=never/1=always/2=ifnorx [+10*n: after n sec.])" ],
 [ "dispcontrast", "OLED contrast (-1=use default; 0..255=set contrast)" ],
 [ "norx_timeout", "No-RX-timeout in seconds (-1=disabled)"],
-[ "norx_sticky", "Sticky lock timeout when descending near ground (seconds, default 90, 0=disable)"],
-[ "norx_sticky_alt", "Sticky lock altitude threshold (meters, default 3000)"],
 [ "tft_orient", "TFT orientation (0/1/2/3), OLED flip: 3"],
 [ "", "Spectrum display configuration", "https://github.com/dl9rdz/rdz_ttgo_sonde/wiki/Spectrum-configuration" ],
 [ "spectrum", "Show spectrum on start (-1=no, 0=forever, >0=time [sec])" ],
@@ -28,7 +33,6 @@ var cfgs = [
 [ "freqofs", "RX frequency offset (Hz)"],
 [ "rs41.agcbw", "RS41 AGC bandwidth"],
 [ "rs41.rxbw", "RS41 RX bandwidth"],
-[ "rs41.posok", "RS41 accept frame on valid GPS/ID even if sensor CRC fails (1=enable, 0=strict CRC)"],
 [ "rs92.rxbw", "RS92 RX (and AGC) bandwidth"],
 [ "rs92.alt2d", "RS92 2D fix default altitude"],
 [ "dfm.agcbw", "DFM AGC bandwidth"],
@@ -88,10 +92,6 @@ var cfgs = [
 [ "hoanuk.port", "hoan.uk Ingest TCP port (default: 80)" ],
 [ "hoanuk.path", "hoan.uk Ingest API path (default: /api/v1/telemetry/ingest)" ],
 [ "hoanuk.token", "hoan.uk Ingest API token / bearer authorization (optional)" ],
-[ "", "Last position flash persistence", "https://hoan.uk/weather/radiosonde" ],
-[ "lastpos.active", "Save last-known GPS coordinates to Flash (1=enable, 0=disable)" ],
-[ "lastpos.interval", "Minimum seconds between Flash writes (seconds, default 10)" ],
-[ "lastpos.alt_step", "Descent altitude step to trigger Flash write (meters, default 20)" ],
 [ "", "SD card logger configuration", "https://github.com/dl9rdz/rdz_ttgo_sonde/wiki/SDcard-configuration"],
 [ "sd.cs", "SD card CS" ],
 [ "sd.miso", "SD card MISO/DI" ],
@@ -216,9 +216,44 @@ function rowdisp(id,disp) {
   document.querySelector("span."+hid).hidden=true;
   document.querySelector("span."+nid).removeAttribute('hidden');
 }
+function cfgExpandAll(expand) {
+  var acc = document.getElementsByClassName("cfgheader");
+  for (var i = 0; i < acc.length; i++) {
+    var isActive = acc[i].classList.contains("active");
+    if ((expand && !isActive) || (!expand && isActive)) {
+      acc[i].click();
+    }
+  }
+}
+function cfgFilter(query) {
+  var q = (query || "").toLowerCase().trim();
+  var panels = document.getElementsByClassName("cfgpanel");
+  var headers = document.getElementsByClassName("cfgheader");
+  if (!q) {
+    for (var i = 0; i < panels.length; i++) panels[i].style.display = "";
+    for (var i = 0; i < headers.length; i++) headers[i].style.display = "";
+    return;
+  }
+  cfgExpandAll(true);
+  for (var i = 0; i < panels.length; i++) {
+    var text = panels[i].textContent.toLowerCase();
+    var inp = panels[i].querySelector("input");
+    var inpName = inp ? inp.name.toLowerCase() : "";
+    if (text.indexOf(q) !== -1 || inpName.indexOf(q) !== -1) {
+      panels[i].style.display = "";
+    } else {
+      panels[i].style.display = "none";
+    }
+  }
+}
 function configTable() {
+  var toolbar = "<div style=\"display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;\">" +
+    "<input type=\"text\" id=\"cfgsearch\" placeholder=\"Tìm kiếm tham số (vd: rs41, sticky, lastpos, wifi...)\" style=\"flex:1;min-width:200px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;\" onkeyup=\"cfgFilter(this.value)\"/>" +
+    "<button type=\"button\" onclick=\"cfgExpandAll(true)\" style=\"padding:7px 12px;background:#2563eb;color:#ffffff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;\">Mở tất cả</button>" +
+    "<button type=\"button\" onclick=\"cfgExpandAll(false)\" style=\"padding:7px 12px;background:#64748b;color:#ffffff;border:none;border-radius:6px;cursor:pointer;font-size:13px;\">Thu gọn</button>" +
+    "</div>\n";
   // iterate over cfgs
-  var tab = "<table width=\"100%\"><tr><th>Option</th><th>Value</th></tr>\n";
+  var tab = toolbar + "<table width=\"100%\"><tr><th>Option</th><th>Value</th></tr>\n";
   var id=0;
   for(i=0; i<cfgs.length; i++) { 
     var key = cfgs[i][0];
@@ -250,18 +285,16 @@ function configTable() {
       if(this.classList.toggle("active")) achar = "[\u2212]";
       this.firstChild.innerHTML = achar + this.firstChild.innerHTML.substring(3);
       var panel = this;
-      console.log(panel);
       while( panel = panel.nextElementSibling) {
-        console.log(panel);
 	if ( panel.className!="cfgpanel") { break; }
         if(panel.style.visibility==="collapse") {
           panel.style.visibility="visible";
         } else {
-          console.log("none");
           panel.style.visibility="collapse";
         } 
       }
     });
   }
-  acc[0].click();
+  if (acc.length > 0) acc[0].click();
+  if (acc.length > 1) acc[1].click();
 }

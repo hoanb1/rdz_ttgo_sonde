@@ -659,10 +659,12 @@ void addSondeStatus(char *ptr, int i)
             s->d.burstKT, s->d.launchKT, s->d.countKT, ((uint16_t)s->d.frame - s->d.crefKT));
   }
   sprintf(ptr + strlen(ptr), "<tr><td><a target=\"_empty\" href=\"geo:%.6f,%.6f\">GEO-App</a> - ", s->d.lat, s->d.lon);
+  sprintf(ptr + strlen(ptr), "<a target=\"_empty\" href=\"https://www.google.com/maps/dir/?api=1&destination=%.6f,%.6f\">Chỉ đường Google</a> - ", s->d.lat, s->d.lon);
+  sprintf(ptr + strlen(ptr), "<a target=\"_empty\" href=\"https://maps.apple.com/?q=%.6f,%.6f\">Apple</a> - ", s->d.lat, s->d.lon);
   sprintf(ptr + strlen(ptr), "<a target=\"_empty\" href=\"https://radiosondy.info/sonde_archive.php?sondenumber=%s\">radiosondy.info</a> - ", s->d.id);
-  sprintf(ptr + strlen(ptr), "<a target=\"_empty\" href=\"https://tracker.sondehub.org/%s\">SondeHub Tracker</a> - ", s->d.ser);
+  sprintf(ptr + strlen(ptr), "<a target=\"_empty\" href=\"https://tracker.sondehub.org/%s\">SondeHub Tracker</a> - ", s->d.id);
   sprintf(ptr + strlen(ptr), "<a target=\"_empty\" href=\"https://www.openstreetmap.org/?mlat=%.6f&mlon=%.6f&zoom=14\">OSM</a> - ", s->d.lat, s->d.lon);
-  sprintf(ptr + strlen(ptr), "<a target=\"_empty\" href=\"https://www.google.com/maps/search/?api=1&query=%.6f,%.6f\">Google</a></td></tr>", s->d.lat, s->d.lon);
+  sprintf(ptr + strlen(ptr), "<a target=\"_empty\" href=\"https://www.google.com/maps/search/?api=1&query=%.6f,%.6f\">Google Maps</a></td></tr>", s->d.lat, s->d.lon);
 
   strcat(ptr, "</table>\n");
 }
