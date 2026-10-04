@@ -185,6 +185,12 @@ extern RXTask rxtask;
 struct st_rs41config {
 	int agcbw;
 	int rxbw;
+	int posok;
+};
+struct st_lastposconfig {
+	int active;
+	int interval;
+	int alt_step;
 };
 struct st_rs92config {
 	int rxbw;
@@ -325,6 +331,8 @@ typedef struct st_rdzconfig {
 	int marker;				// show freq marker in spectrum  0=disable
 	int maxsonde;			// number of max sonde in scan (range=1-99)
 	int norx_timeout;		// Time after which rx mode switches to scan mode (without rx signal)
+	int norx_sticky;		// Sticky lock timeout (seconds) when descending near ground (0=disable)
+	int norx_sticky_alt;		// Altitude threshold (meters) for sticky lock
 	int noisefloor;			// for spectrum display
 	char mdnsname[15];		// mDNS-Name, defaults to rdzsonde
 	// receiver configuration
@@ -352,6 +360,7 @@ typedef struct st_rdzconfig {
 	struct st_sdcard sd;
 	struct st_ss ss;
 	struct st_hoanuk hoanuk;
+	struct st_lastposconfig lastpos;
 } RDZConfig;
 
 

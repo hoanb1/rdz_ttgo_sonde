@@ -59,6 +59,10 @@ dispsaver=0
 dispcontrast=-1
 # set to -1 to disable (used for "N" values in timers in screens.txt). Value in seconds
 norx_timeout=60
+# Sticky lock timeout when descending near ground (seconds, default 90, 0=disable)
+norx_sticky=90
+# Sticky lock altitude threshold in meters (default 3000)
+norx_sticky_alt=3000
 #-------------------------------#
 # Spectrum display settings
 #-------------------------------#
@@ -81,10 +85,21 @@ passcode=12345
 #-------------------------------#
 rs41.agcbw=12500
 rs41.rxbw=6300
+# rs41.posok: accept frame on valid GPS and ID even if auxiliary sensor CRC fails (1=enable, 0=strict CRC)
+rs41.posok=1
 rs92.rxbw=12500
 rs92.alt2d=480
 dfm.agcbw=20800
 dfm.rxbw=10400
+#-------------------------------#
+# Last position flash persistence
+#-------------------------------#
+# Save last-known GPS coordinates to Flash LittleFS (1=enable, 0=disable)
+lastpos.active=1
+# Minimum seconds between flash writes (cooldown, default 10s)
+lastpos.interval=10
+# Descent altitude step to trigger flash write (meters, default 20m)
+lastpos.alt_step=20
 #-------------------------------#
 # ftp server for RINEX data (for RS92)
 # YYYY/DDD/brdcDDD0.YYn.gz is appended

@@ -221,6 +221,12 @@ void Sonde::defaultConfig() {
 	config.power_pout = -1;
 	config.spectrum=10;
 	config.b2mute = 360;
+	config.rs41.posok = 1;
+	config.norx_sticky = 90;
+	config.norx_sticky_alt = 3000;
+	config.lastpos.active = 1;
+	config.lastpos.interval = 10;
+	config.lastpos.alt_step = 20;
 	config.sd.cs = -1;
 	config.sd.miso = -1;
 	config.sd.mosi = -1;
@@ -792,10 +798,14 @@ uint8_t Sonde::timeoutEvent(SondeInfo *si) {
 	}
 	if(si->lastState==0) {
 		int32_t norx_to = disp.layout->timeouts[2];
-		// Smart Sticky Lock: When tracking an active radiosonde descending below 3000m,
-		// extend timeout to 90 seconds to prevent hopping away during ground-level obstacle fading
-		if (VALIDPOS(si->d.validPos) && si->d.alt > 0 && si->d.alt < 3000.0f) {
-			if (norx_to < 90000) norx_to = 90000;
+		// Smart Sticky Lock: When tracking an active radiosonde descending below sticky altitude threshold,
+		// extend timeout to norx_sticky seconds to prevent hopping away during ground-level obstacle fading
+		if (sonde.config.norx_sticky > 0 && VALIDPOS(si->d.validPos) && si->d.alt > 0) {
+			float alt_threshold = (sonde.config.norx_sticky_alt > 0) ? (float)sonde.config.norx_sticky_alt : 3000.0f;
+			if (si->d.alt < alt_threshold) {
+				int32_t sticky_ms = (int32_t)sonde.config.norx_sticky * 1000;
+				if (norx_to < sticky_ms) norx_to = sticky_ms;
+			}
 		}
 		if (norx_to >= 0 && now - si->norxStart >= (uint32_t)norx_to) {
 			LOG_I(TAG, "Sonde::timeoutEvent: NORX\n");

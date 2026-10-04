@@ -80,6 +80,7 @@ bool loadLastPos() {
 
 bool updateLastPos(SondeInfo *si, bool force) {
     if (!si) return false;
+    if (sonde.config.lastpos.active == 0) return false;
     if (!si->d.validID || !VALIDPOS(si->d.validPos)) return false;
     if ((si->d.validPos & 0x80) && !force) return false;
 
@@ -114,15 +115,19 @@ bool updateLastPos(SondeInfo *si, bool force) {
     static char lastSavedId[12] = {0};
     uint32_t now = millis();
 
+    uint32_t cooldown_ms = (sonde.config.lastpos.interval > 0 ? (uint32_t)sonde.config.lastpos.interval : 10) * 1000;
+    float alt_step = (sonde.config.lastpos.alt_step > 0 ? (float)sonde.config.lastpos.alt_step : 20.0f);
+    float sticky_alt = (sonde.config.norx_sticky_alt > 0 ? (float)sonde.config.norx_sticky_alt : 3000.0f);
+
     bool shouldWrite = false;
     if (force) {
         shouldWrite = true;
     } else if (strcmp(lastSavedId, lastPos.id) != 0) {
         shouldWrite = true;
-    } else if (now - lastFlashSaveMillis >= 10000) { // minimum 10s cooldown
-        if (lastPos.alt < 3000.0f && (lastSavedAlt - lastPos.alt >= 20.0f)) {
+    } else if (now - lastFlashSaveMillis >= cooldown_ms) {
+        if (lastPos.alt < sticky_alt && (lastSavedAlt - lastPos.alt >= alt_step)) {
             shouldWrite = true;
-        } else if (lastPos.alt >= 3000.0f && (lastSavedAlt - lastPos.alt >= 100.0f)) {
+        } else if (lastPos.alt >= sticky_alt && (lastSavedAlt - lastPos.alt >= (alt_step * 5.0f))) {
             shouldWrite = true;
         } else if (lastPos.alt < 500.0f && (now - lastFlashSaveMillis >= 30000)) {
             shouldWrite = true;

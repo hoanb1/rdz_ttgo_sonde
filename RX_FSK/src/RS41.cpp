@@ -966,9 +966,11 @@ int RS41::decode41(byte *data, int maxlen)
 		p += len;
 		Serial.println();
 	}
-	// Accept frame as RX_OK if ID and GPS position blocks both succeeded,
-	// preventing discard of valid coordinates when non-critical sensor sub-blocks fail CRC on weak signals
-	return (serialok && (crcok || posok)) ? 0 : RX_ERROR;
+	// If sonde.config.rs41.posok is enabled (default 1), accept frame as RX_OK if ID and GPS position blocks both succeeded,
+	// preventing discard of valid coordinates when non-critical sensor sub-blocks fail CRC on weak signals.
+	// If posok is set to 0 (strict mode), requires full CRC pass on all blocks.
+	bool accept_partial = (sonde.config.rs41.posok != 0) && posok;
+	return (serialok && (crcok || accept_partial)) ? 0 : RX_ERROR;
 }
 void RS41::printRaw(uint8_t *data, int len)
 {
