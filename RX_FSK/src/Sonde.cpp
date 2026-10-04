@@ -789,9 +789,17 @@ uint8_t Sonde::timeoutEvent(SondeInfo *si) {
 		LOG_I(TAG, "Sonde::timeoutEvent: RX\n");
 		return EVT_RXTO;
 	}
-	if(si->lastState==0 && disp.layout->timeouts[2]>=0 && now - si->norxStart >= disp.layout->timeouts[2]) {
-		LOG_I(TAG, "Sonde::timeoutEvent: NORX\n");
-		return EVT_NORXTO;
+	if(si->lastState==0) {
+		int32_t norx_to = disp.layout->timeouts[2];
+		// Smart Sticky Lock: When tracking an active radiosonde descending below 3000m,
+		// extend timeout to 90 seconds to prevent hopping away during ground-level obstacle fading
+		if (VALIDPOS(si->d.validPos) && si->d.alt > 0 && si->d.alt < 3000.0f) {
+			if (norx_to < 90000) norx_to = 90000;
+		}
+		if (norx_to >= 0 && now - si->norxStart >= (uint32_t)norx_to) {
+			LOG_I(TAG, "Sonde::timeoutEvent: NORX\n");
+			return EVT_NORXTO;
+		}
 	}
 	return 0;
 }
