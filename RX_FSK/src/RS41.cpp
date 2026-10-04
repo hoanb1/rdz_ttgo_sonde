@@ -761,7 +761,7 @@ float GetRAHumidity( uint32_t humCurrent, uint32_t humMin, uint32_t humMax, floa
 int RS41::decode41(byte *data, int maxlen)
 {
 	char buf[128];	
-	int crcok = 1, serialok = 0;
+	int crcok = 1, serialok = 0, posok = 0;
 	SondeData *si = &(sonde.si()->d);
 
 	int32_t corr = reedsolomon41(data, 560, 131);  // try short frame first
@@ -875,10 +875,12 @@ int RS41::decode41(byte *data, int maxlen)
 			if (si->sats < 4 && si->sats > 0) {
 				if (si->validPos) si->validPos |= 0x80;
 			}
+			posok = 1;
 			break;
 		case '\202':    // pos, new X version
 			posrs41(data+p, len, 0);
 			si->time = rs41date(data+p+18) - 18;
+			posok = 1;
 			break;
 		case '\203':   // sat info, new X version
 		{
@@ -964,7 +966,9 @@ int RS41::decode41(byte *data, int maxlen)
 		p += len;
 		Serial.println();
 	}
-	return (serialok&&crcok) ? 0 : RX_ERROR;
+	// Accept frame as RX_OK if ID and GPS position blocks both succeeded,
+	// preventing discard of valid coordinates when non-critical sensor sub-blocks fail CRC on weak signals
+	return (serialok && (crcok || posok)) ? 0 : RX_ERROR;
 }
 void RS41::printRaw(uint8_t *data, int len)
 {

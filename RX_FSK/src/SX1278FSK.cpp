@@ -983,6 +983,13 @@ uint8_t SX1278FSK::ON() {
     // Semtech SX1262 Rx Boosted Gain (0x08AC = 0x96) for maximum RF sensitivity (+2..3 dB)
     uint8_t val = 0x96;
     sx126x_write_register(NULL, 0x08AC, &val, 1);
+    // Semtech Retention Memory Sequence: persist Rx Boosted Gain across warm-start cycles
+    uint8_t ret_enable = 0x01;
+    uint8_t ret_addr_msb = 0x08;
+    uint8_t ret_addr_lsb = 0xAC;
+    sx126x_write_register(NULL, 0x029F, &ret_enable, 1);
+    sx126x_write_register(NULL, 0x02A0, &ret_addr_msb, 1);
+    sx126x_write_register(NULL, 0x02A1, &ret_addr_lsb, 1);
     sx126x_clear_device_errors(NULL);
     return 0;
 }

@@ -3114,6 +3114,7 @@ void loopWifiScan() {
     disp.rdis->drawString(0, 0, "WiFi Scan...");
     int line = 0;
     WiFi.mode(WIFI_STA);
+    WiFi.setTxPower(WIFI_POWER_15dBm); // Reduce WiFi transmit radiation and 3.3V rail noise to maximize SX1262 sensitivity
     int n = WiFi.scanNetworks();
     for (int i = 0; i < n; i++) {
       String ssid = WiFi.SSID(i);
