@@ -11,8 +11,33 @@
   <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.marker.slideto@0.2.0/Leaflet.Marker.SlideTo.js"></script>
   <script src="livemap.js"></script>
+  <script>
+  function myFunction() {
+    var x = document.getElementById("myTopnav");
+    if (!x) return;
+    if (x.className === "topnav") {
+      x.className += " responsive";
+    } else {
+      x.className = "topnav";
+    }
+  }
+  </script>
 </head>
-<body style="margin:0;padding:0;overflow:hidden;width:100vw;height:100vh;">
-  <div id="map"></div>
+<body style="margin:0;padding:0;overflow:hidden;width:100vw;height:100vh;display:flex;flex-direction:column;">
+  <div class="header" style="z-index:1100;position:relative;">
+    <div class="topnav" id="myTopnav">
+      <a href="index.html#home" class="tablinks">Home</a>
+      <a href="index.html#qrg" class="tablinks">QRG</a>
+      <a href="index.html#data" class="tablinks">Data</a>
+      <a href="livemap.html" class="tablinks active">Livemap</a>
+      <a href="index.html#ctrl" class="tablinks">Control</a>
+      <a href="index.html#config" class="tablinks">Config</a>
+      <a href="index.html#wifi" class="tablinks">WiFi</a>
+      <a href="javascript:void(0);" class="icon" onclick="myFunction()">
+        <span class="hamburger"></span>
+      </a>
+    </div>
+  </div>
+  <div id="map" style="flex:1;position:relative;"></div>
 </body>
 </html>

@@ -121,10 +121,6 @@ headtxt = function(data,stat) {
   $('#sonde_type').html(data.type);
   $('#sonde_statbar').html('&nbsp;'+statbar);
 };
-
-  if (window.self === window.top) {
-    map.addControl(new L.Control.Button([ { position: 'topleft', text: '🔙', href: 'index.html#livemap' } ]));
-  }
   
 L.control.zoom({ position:'topleft' }).addTo(map);
 
