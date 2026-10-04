@@ -1,24 +1,58 @@
-rdzTTGOsonde
-============
+rdzTTGOsonde (hoan.uk Edition)
+==============================
 
-This a decoder for radiosonde RS41, RS92, DFM06/09/17, M10/M20, and MP3H
-based on a TTGO LoRa ESP32 board.
+> **Multi-Protocol Radiosonde Ground Station & IoT Telemetry Gateway**  
+> **Architecture:** Conforming to IEEE Std 1016-2009 (Software Design Descriptions - SDD)  
+> **Latest Release:** `v1.3.3-hoanuk` | **Dual Target:** ESP32-S3 (Heltec V3) & ESP32 (TTGO v2.1)
 
-It supports OLED displays (SSD1306, SH1106) and TFT displays (ILI9225, ILI9341/9342).
+This is an enterprise-grade multi-protocol ground station receiver for radiosondes (Vaisala RS41, RS92, Graw DFM, Meteomodem M10/M20, Meteo-Labor MP3H) and IoT telemetry trackers, optimized for the `hoan.uk` platform.
 
-It also supports feeding data to external applications using WiFi (NOT bluetooth):
-- Android app by dl9rdz (see https://github.com/dl9rdz/rdzwx-go for apk download)
-- AXUDP (for aprsmap application by oe5dxl, among others)
-- KISS TNC (aprs format, mainly useful for APRSdroid app)
-- MQTT
-- SondeHub tracker
-- Chasemapper UDP (experimental)
+## Architecture: Spec-Driven & Schema-Driven Development (SDD)
 
+This project strictly adheres to **Clean 4-Layer SDD Architecture** conforming to **IEEE Std 1016-2009**:
+- **Full Architecture Specification**: See [docs/SDD.md](docs/SDD.md) for complete C4 models, subblock decoders, and radio HAL.
+- **Single Source of Truth (SSOT) Schemas**:
+  - [`schemas/CompactTelemetryV1.json`](schemas/CompactTelemetryV1.json): Ultra-compact 11 to 24-byte binary telemetry protocol.
+  - [`schemas/Rs41RawForward.json`](schemas/Rs41RawForward.json): Raw descrambled RS41 frame hex forwarding on decode error for cloud Reed-Solomon recovery.
+  - [`schemas/QrgChannelConfig.json`](schemas/QrgChannelConfig.json): Channel configuration with type character (`typech`) preservation.
+- **Release History**: See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
-Please consult the Wiki at https://github.com/dl9rdz/rdz_ttgo_sonde/wiki/Supported-boards
-for details on supported boards, and additional setup instructions.
+## Supported Outputs & Telemetry Egress
 
-NOTE: Older boards with 26 MHz crystal (TTGO LoRa32 v1, Heltec v1/v2) are not supported by newer dev/main firmware images.
+- **hoan.uk Platform**:
+  - Ultra-compact binary telemetry (11–24 bytes via `connHoanUK`, saving 90% bandwidth).
+  - Cloud Reed-Solomon raw packet forwarding fallback (`rs41_raw_forward`).
+- **SondeHub v2**: Real-time atmospheric sounding crowdsource tracking.
+- **APRS-IS**: AX.25 packet forwarding for amateur radio mapping.
+- **MQTT**: Direct JSON publishing to enterprise message brokers.
+- **AXUDP**: For `aprsmap` and local decoders.
+- **KISS TNC**: For APRSdroid and mobile trackers.
+- **Embedded Web UI & In-App OTA**: Real-time status at `/live.json`, QRG channel editor at `/qrg.json`, and direct OTA updating via `hoan.uk/firmware/rdz/`.
+
+## Supported Hardware Platforms
+
+| Board | Microcontroller | RF Transceiver | Frequency Range | PlatformIO Target |
+| :--- | :--- | :--- | :--- | :--- |
+| **Heltec WiFi LoRa 32 V3** | ESP32-S3 (Dual-Core 240MHz, 8MB Flash) | Semtech SX1262 (SPI) | 400–438 MHz | `heltec-lora32-v3` |
+| **LilyGO TTGO LoRa32 v2.1** | ESP32 (Dual-Core 240MHz, 4MB Flash) | Semtech SX1278 (SPI) | 400–438 MHz | `ttgo-lora32` |
+| **LilyGO T-Beam** | ESP32 + GNSS | Semtech SX1278 (SPI) | 400–438 MHz | `ttgo-t-beam` |
+
+## Quick Start (Building & Flashing)
+
+```bash
+# Build firmware for Heltec WiFi LoRa 32 V3 (ESP32-S3)
+pio run -e heltec-lora32-v3
+
+# Flash Heltec WiFi LoRa 32 V3 via USB
+pio run -e heltec-lora32-v3 -t upload --upload-port /dev/ttyUSB0
+
+# Build firmware for TTGO LoRa32 v2.1 (ESP32)
+pio run -e ttgo-lora32
+
+# Flash TTGO LoRa32 v2.1 via USB
+pio run -e ttgo-lora32 -t upload --upload-port /dev/ttyUSB0
+```
+
 
 
 ### Radiosonde Support Matrix
