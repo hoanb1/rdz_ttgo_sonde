@@ -10,6 +10,7 @@
  */
 
 #include "SX1278FSK.h"
+#include "RS41.h"
 #include "SPI.h"
 #include "Sonde.h"
 #include "Display.h"
@@ -903,7 +904,7 @@ void SX1278FSK::showRxRegisters()
 
 static sx126x_mod_params_gfsk_t modParams = {
     .br_in_bps = 4800,
-    .fdev_in_hz = 6300,
+    .fdev_in_hz = 2400,
     .pulse_shape = SX126X_GFSK_PULSE_SHAPE_OFF,
     .bw_dsb_param = SX126X_GFSK_BW_58600,
 };
@@ -919,6 +920,7 @@ static sx126x_pkt_params_gfsk_t pktParams = {
 };
 
 static sx126x_long_pkt_rx_state pktRxState;
+static uint16_t targetPayloadLength = 312;
 
 static sx126x_gfsk_bw_t getBandwidth(unsigned bandwidth) {
   sx126x_gfsk_bw_t tab[] = {
@@ -1070,6 +1072,7 @@ float SX1278FSK::getBitrate() {
 
 uint8_t SX1278FSK::setRxBandwidth(float bw) {
     currentRxBw = bw;
+    modParams.fdev_in_hz = 2400;
     modParams.bw_dsb_param = getBandwidth(bw * 2);
     sx126x_set_gfsk_mod_params(NULL, &modParams);
     return 0;
@@ -1142,6 +1145,7 @@ uint8_t SX1278FSK::setPreambleLength(uint16_t l) {
 int SX1278FSK::getPayloadLength() { return pktParams.pld_len_in_bytes; }
 
 uint8_t SX1278FSK::setPayloadLength(int len) {
+    targetPayloadLength = len;
     if (len > 255) {
         longPacketMode = true;
         pktParams.pld_len_in_bytes = 255;
@@ -1153,7 +1157,8 @@ uint8_t SX1278FSK::setPayloadLength(int len) {
         longPacketMode = false;
         pktParams.pld_len_in_bytes = len;
         sx126x_set_gfsk_pkt_params(NULL, &pktParams);
-        sx126x_set_dio_irq_params(NULL, SX126X_IRQ_RX_DONE, SX126X_IRQ_RX_DONE, 
+        sx126x_set_dio_irq_params(NULL, SX126X_IRQ_RX_DONE | SX126X_IRQ_SYNC_WORD_VALID, 
+                                  SX126X_IRQ_RX_DONE | SX126X_IRQ_SYNC_WORD_VALID, 
                                   SX126X_IRQ_NONE, SX126X_IRQ_NONE);
     }
     return 0;
@@ -1195,7 +1200,7 @@ uint8_t SX1278FSK::receivePacketTimeout(uint32_t wait, byte *data) {
     if (longPacketMode) {
         uint16_t irq_status = 0;
         bool sync_valid = false;
-        uint16_t actualLength = 320;
+        uint16_t actualLength = (targetPayloadLength > 0) ? targetPayloadLength : 312;
         
         while (millis() - start_time < wait) {
             sx126x_get_irq_status(NULL, &irq_status);
@@ -1218,30 +1223,34 @@ uint8_t SX1278FSK::receivePacketTimeout(uint32_t wait, byte *data) {
         }
         
         last_data_time = millis();
-        while (di < actualLength && (millis() - last_data_time < 1000)) {
+        while (di < actualLength && (millis() - last_data_time < 1200)) {
             uint8_t read_bytes = 0;
             sx126x_long_pkt_rx_get_partial_payload(NULL, &pktRxState, data + di, actualLength - di, &read_bytes);
             if (read_bytes > 0) {
                 di += read_bytes;
                 last_data_time = millis();
             } else {
-                delay(10);
+                delay(5);
             }
         }
         
         sx126x_long_pkt_rx_complete(NULL);
         if (di < actualLength) {
-            return 1;
+            return 2;
         }
         return 0;
     } else {
         uint16_t irq_status = 0;
+        uint16_t last_irq = 0;
         while (millis() - start_time < wait) {
             sx126x_get_irq_status(NULL, &irq_status);
+            if (irq_status) last_irq = irq_status;
             if (irq_status & SX126X_IRQ_RX_DONE) {
                 sx126x_clear_irq_status(NULL, SX126X_IRQ_RX_DONE);
                 sx126x_get_rx_buffer_status(NULL, &bufStatus);
-                sx126x_read_buffer(NULL, bufStatus.buffer_start_pointer, data, bufStatus.pld_len_in_bytes);
+                uint8_t rxLen = (bufStatus.pld_len_in_bytes > 0) ? bufStatus.pld_len_in_bytes : pktParams.pld_len_in_bytes;
+                if (rxLen == 0) rxLen = 240;
+                sx126x_read_buffer(NULL, bufStatus.buffer_start_pointer, data, rxLen);
                 sx126x_get_gfsk_pkt_status_raw(NULL, &pktStatus);
                 sonde.sondeList[rxtask.currentSonde].rssi = (uint8_t)pktStatus.rssi_sync;
                 if(rxtask.receiveResult == 0xFFFF) {
@@ -1252,6 +1261,8 @@ uint8_t SX1278FSK::receivePacketTimeout(uint32_t wait, byte *data) {
             }
             delay(5);
         }
+        static int rx_timeout_count = 0;
+        snprintf(RS41::last_rx_debug, sizeof(RS41::last_rx_debug), "TIMEOUT irq=0x%04X cnt=%d", last_irq, ++rx_timeout_count);
         sx126x_set_standby(NULL, SX126X_STANDBY_CFG_RC);
         return 1;
     }

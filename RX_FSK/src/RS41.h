@@ -64,6 +64,9 @@ public:
 	//int receiveFrame();
 
 	static int getSubtype(char *buf, int buflen, SondeInfo *si);
+	uint8_t* getRawData(int *len);
+	static char last_rx_hex[256];
+	static char last_rx_debug[128];
 
 	int use_ecc = 1;
 };

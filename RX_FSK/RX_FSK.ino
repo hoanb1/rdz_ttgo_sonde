@@ -329,21 +329,22 @@ void setupChannelList() {
     *space = 0;
     float freq = atof(line.c_str());
     SondeType type;
-    if (space[1] == '4' || space[1] == 'N') {
+    char typech = space[1];
+    if (typech == '4' || typech == 'N') {
       type = STYPE_RS41;
-    } else if (space[1] == 'R') {
+    } else if (typech == 'R') {
       type = STYPE_RS92;
     }
-    else if (space[1] == 'D' || space[1] == '9' || space[1] == '6') {
+    else if (typech == 'D' || typech == '9' || typech == '6') {
       type = STYPE_DFM;
     }
-    else if (space[1] == 'M') {
+    else if (typech == 'M') {
       type = STYPE_M10M20;
     }
-    else if (space[1] == '2') {
+    else if (typech == '2') {
       type = STYPE_M10M20;
     }
-    else if (space[1] == '3') {
+    else if (typech == '3') {
       type = STYPE_MP3H;
     }
     else continue;
@@ -355,7 +356,7 @@ void setupChannelList() {
         LOG_D(TAG, "Add %f - sondetype: %d (on/off: %d) - site #%d - name: %s\n ", freq, type, active, i, launchsite);
       }
     }
-    sonde.addSonde(freq, type, active, launchsite);
+    sonde.addSonde(freq, type, active, launchsite, typech);
     i++;
   }
   file.close();
@@ -423,9 +424,10 @@ const char *getQRGAsJson() {
     if (i > 0) {
       strcat(ptr, ",");
     }
+    char ch = si->typech ? si->typech : sondeTypeChar[si->type];
     sprintf(ptr + strlen(ptr),
-            "{\"channel\":%d, \"active\":%d, \"freq\":%.3f, \"launchsite\":\"%s\", \"type\":\"%s\"}",
-            i+1, si->active, si->freq, si->launchsite, sondeTypeStr[si->type]);
+            "{\"channel\":%d, \"active\":%d, \"freq\":%.3f, \"launchsite\":\"%s\", \"type\":\"%s\", \"typech\":\"%c\"}",
+            i+1, si->active, si->freq, si->launchsite, sondeTypeStr[si->type], ch);
   }
   strcat(ptr, "]}");
   return message;
@@ -440,7 +442,8 @@ const char *createQRGForm() {
   strcat(ptr, "<script>\nvar qrgs = [];\n");
   for (int i = 0; i < sonde.config.maxsonde; i++) {
     SondeInfo *si = &sonde.sondeList[i];
-    sprintf(ptr + strlen(ptr), "qrgs.push([%d, \"%.3f\", \"%s\", \"%c\"]);\n", si->active, si->freq, si->launchsite, sondeTypeChar[si->type] );
+    char ch = si->typech ? si->typech : sondeTypeChar[si->type];
+    sprintf(ptr + strlen(ptr), "qrgs.push([%d, \"%.3f\", \"%s\", \"%c\"]);\n", si->active, si->freq, si->launchsite, ch );
   }
   strcat(ptr, "</script>\n");
   strcat(ptr, "<div id=\"divTable\"></div>");
@@ -713,6 +716,8 @@ const char *createLiveJson() {
     sprintf(ptr + strlen(ptr), ", \"gps\": {\"lat\": %.8g, \"lon\": %.8g, \"alt\": %d, \"sat\": %d, \"speed\": %g, \"dir\": %d, \"hdop\": %d }", posInfo.lat, posInfo.lon, posInfo.alt, posInfo.sat, posInfo.speed, posInfo.course, posInfo.hdop);
     //}
   }
+
+  sprintf(ptr + strlen(ptr), ", \"debug\": \"%s\", \"raw_hex\": \"%s\"", RS41::last_rx_debug, RS41::last_rx_hex);
 
   strcat(ptr, "}");
   return message;
@@ -2567,6 +2572,18 @@ void loopDecoder() {
     connSDCard.updateSonde(s);
 #endif
   } else {
+#if FEATURE_HOANUK
+    if (connected && (res & 0xff) == RX_ERROR && s->type == STYPE_RS41) {
+      int rawLen = 0;
+      uint8_t *rawBuf = rs41.getRawData(&rawLen);
+      if (rawBuf && rawLen > 0) {
+        LOG_I(TAG, "RS41 decode error -> Forwarding raw packet (%d bytes) to hoan.uk", rawLen);
+        connHoanUK.updateRawPacket(rawBuf, rawLen, s->freq, s->rssi);
+      }
+    } else {
+      connHoanUK.updateSonde( NULL );
+    }
+#endif
 #if FEATURE_SONDEHUB
     connSondehub.updateSonde( NULL );
 #endif
@@ -2751,6 +2768,9 @@ void enableNetwork(bool enable) {
 #if FEATURE_APRS
     connAPRS.netsetup();
 #endif
+#if FEATURE_HOANUK
+    connHoanUK.netsetup();
+#endif
   } else {
     MDNS.end();
 #if FEATURE_MQTT
@@ -2761,6 +2781,9 @@ void enableNetwork(bool enable) {
 #endif
 #if FEATURE_APRS
     connAPRS.netshutdown();
+#endif
+#if FEATURE_HOANUK
+    connHoanUK.netshutdown();
 #endif
     connected = false;
   }

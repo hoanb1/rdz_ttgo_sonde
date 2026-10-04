@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CompactTelemetryV1",
+  "description": "Ultra-compact binary telemetry wire format (11 to 24 bytes) packed by rdzTTGOSonde connHoanUK and decoded by hoan.uk unifiedIngestService",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "integer",
+      "enum": [1],
+      "description": "Protocol version byte (0x01)"
+    },
+    "flags": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255,
+      "description": "Bitmask of present fields: bit0=GPS(lat,lon), bit1=Alt+Speed, bit2=Heading+Sats, bit3=Temp+Press, bit4=Humi+PM25, bit5=Battery"
+    },
+    "lat": {
+      "type": "number",
+      "minimum": -90.0,
+      "maximum": 90.0,
+      "description": "Latitude in decimal degrees (int32 / 1e6)"
+    },
+    "lon": {
+      "type": "number",
+      "minimum": -180.0,
+      "maximum": 180.0,
+      "description": "Longitude in decimal degrees (int32 / 1e6)"
+    },
+    "alt": {
+      "type": "integer",
+      "description": "Altitude in metres (int16_t MSL)"
+    },
+    "speed": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 255,
+      "description": "Horizontal speed in km/h (uint8_t)"
+    },
+    "heading": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 360,
+      "description": "Heading direction in degrees (uint8_t * 2)"
+    },
+    "sats": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 64,
+      "description": "Number of tracked GNSS satellites (uint8_t)"
+    },
+    "temperature": {
+      "type": "number",
+      "description": "Ambient temperature in degrees Celsius (int16_t / 100.0)"
+    },
+    "pressure": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Atmospheric pressure in hPa (uint16_t / 10.0)"
+    },
+    "humidity": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Relative humidity in % (uint8_t)"
+    },
+    "pm25": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Fine particulate matter in ug/m3 (uint16_t)"
+    },
+    "battery": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Battery voltage in Volts (uint16_t mV / 1000.0)"
+    }
+  },
+  "required": ["version", "flags"]
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Rs41RawForward",
+  "description": "JSON payload schema for forwarding raw descrambled RS41 packets from rdzTTGOSonde to hoan.uk server on CRC/subblock decoding errors",
+  "type": "object",
+  "properties": {
+    "deviceId": {
+      "type": "string",
+      "description": "Callsign or serial extracted from block y or fallback RS41-RAW"
+    },
+    "deviceType": {
+      "type": "string",
+      "enum": ["radiosonde"]
+    },
+    "stationRole": {
+      "type": "string",
+      "enum": ["stationary", "mobile"]
+    },
+    "protocol": {
+      "type": "string",
+      "enum": ["rs41_raw_forward"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload_hex": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]+$",
+      "description": "Hexadecimal encoded descrambled RS41 frame bytes"
+    },
+    "system": {
+      "type": "object",
+      "properties": {
+        "freq": { "type": "number", "description": "Tuned center frequency in MHz" },
+        "rssi": { "type": "integer", "description": "Received signal strength indicator in dBm" }
+      },
+      "required": ["freq", "rssi"]
+    }
+  },
+  "required": ["deviceId", "deviceType", "stationRole", "protocol", "timestamp", "payload_hex", "system"]
+}

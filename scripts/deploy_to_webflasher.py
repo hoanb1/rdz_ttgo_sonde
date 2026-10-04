@@ -182,7 +182,7 @@ def deploy_env(env, version):
         os.makedirs(os.path.dirname(p), exist_ok=True)
         shutil.copy2(VERSION_JSON_PATH, p)
 
-def deploy_ota_packages(version):
+def deploy_ota_packages(version, prefer_env=None):
     """Generates /firmware/rdz/main/ and /firmware/rdz/dev2/ OTA update endpoints."""
     print("\n=======================================================")
     print("--- Generating RDZ in-app OTA Update Endpoints ---")
@@ -195,9 +195,16 @@ def deploy_ota_packages(version):
 
     update_info_html = f"<html><body><p>v{version}-hoanuk</p></body></html>\n"
 
-    ttgo_bin = os.path.join(RDZ_DIR, ".pio/build/ttgo-lora32/firmware.bin")
-    if not os.path.exists(ttgo_bin):
-        ttgo_bin = os.path.join(RDZ_DIR, ".pio/build/heltec-lora32-v3/firmware.bin")
+    target_bin = None
+    if prefer_env:
+        p_bin = os.path.join(RDZ_DIR, f".pio/build/{prefer_env}/firmware.bin")
+        if os.path.exists(p_bin):
+            target_bin = p_bin
+
+    if not target_bin:
+        heltec_bin = os.path.join(RDZ_DIR, ".pio/build/heltec-lora32-v3/firmware.bin")
+        ttgo_bin = os.path.join(RDZ_DIR, ".pio/build/ttgo-lora32/firmware.bin")
+        target_bin = heltec_bin if os.path.exists(heltec_bin) else ttgo_bin
 
     channels = ["main", "dev2"]
     for ch in channels:
@@ -210,13 +217,13 @@ def deploy_ota_packages(version):
             # 1. update.fs.bin
             shutil.copy2(tmp_fs_bin, os.path.join(root_prefix, "update.fs.bin"))
             # 2. update.ino.bin
-            if os.path.exists(ttgo_bin):
-                shutil.copy2(ttgo_bin, os.path.join(root_prefix, "update.ino.bin"))
+            if target_bin and os.path.exists(target_bin):
+                shutil.copy2(target_bin, os.path.join(root_prefix, "update.ino.bin"))
             # 3. update-info.html
             with open(os.path.join(root_prefix, "update-info.html"), "w") as f:
                 f.write(update_info_html)
 
-    print(f"Successfully generated OTA files in /firmware/rdz/main/ and /firmware/rdz/dev2/")
+    print(f"Successfully generated OTA files in /firmware/rdz/main/ and /firmware/rdz/dev2/ (using {target_bin})")
 
 def main():
     parser = argparse.ArgumentParser(description="Build and copy rdz_ttgo_sonde firmware to hoan.uk webflasher and OTA endpoints")
@@ -229,10 +236,11 @@ def main():
     if args.env == "all":
         for e in ENV_CONFIGS.keys():
             deploy_env(e, version)
+        deploy_ota_packages(version)
     else:
         deploy_env(args.env, version)
+        deploy_ota_packages(version, prefer_env=args.env)
 
-    deploy_ota_packages(version)
     print("\n--- ALL DEPLOYMENTS FINISHED SUCCESSFULLY! ---")
 
 if __name__ == "__main__":

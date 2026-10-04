@@ -23,9 +23,11 @@ public:
     virtual String getStatus();
     virtual String getName();
 
+    void updateRawPacket(const uint8_t *raw, int len, float freq, int rssi);
     void hoanuk_client_fsm();
 
 private:
+    void sendBinaryPayload(const char *deviceId, const uint8_t *payload, int len);
     void sendPayload(const char *json_body);
     static float calculateDewPoint(float temp, float hum);
 };

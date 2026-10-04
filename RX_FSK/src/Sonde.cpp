@@ -527,12 +527,13 @@ void Sonde::setIP(String ip, bool AP) {
 void Sonde::clearSonde() {
 	nSonde = 0;
 }
-void Sonde::addSonde(float frequency, SondeType type, int active, char *launchsite)  {
+void Sonde::addSonde(float frequency, SondeType type, int active, char *launchsite, char typech)  {
 	if(nSonde>=config.maxsonde) {
 		LOG_E(TAG, "Cannot add another sonde, MAXSONDE reached");
 		return;
 	}
-	LOG_I(TAG, "Adding %f - %d - %d - %s\n", frequency, type, active, launchsite);
+	char ch = typech ? typech : sondeTypeChar[type];
+	LOG_I(TAG, "Adding %f - %d (%c) - %d - %s\n", frequency, type, ch, active, launchsite);
 	// reset all data if type or frequency has changed
 	if(type != sondeList[nSonde].type || frequency != sondeList[nSonde].freq) {
 		//TODO: Check for potential race condition with decoders
@@ -546,6 +547,7 @@ void Sonde::addSonde(float frequency, SondeType type, int active, char *launchsi
 		clearAllData(sondeList+nSonde);
 	}
 	sondeList[nSonde].active = active;
+	sondeList[nSonde].typech = ch;
 	strncpy(sondeList[nSonde].launchsite, launchsite, 17);	
 	nSonde++;
 }

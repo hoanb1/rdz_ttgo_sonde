@@ -4,7 +4,24 @@ All notable changes to the rdz_ttgo_sonde firmware are documented in this file.
 
 ---
 
-## [1.2.0] - 2026-07-13
+## [1.3.3-hoanuk] - 2026-10-04
+
+### Architecture: Spec-Driven & Schema-Driven Development (SDD)
+- Converted project to IEEE Std 1016-2009 Software Design Description (SDD) architecture with full documentation in `docs/SDD.md`.
+- Defined formal JSON Schemas in `schemas/`:
+  - `CompactTelemetryV1.json`: Ultra-compact binary telemetry wire format (11 to 24 bytes).
+  - `Rs41RawForward.json`: Raw hex packet forwarding protocol for server-side Reed-Solomon recovery.
+  - `QrgChannelConfig.json`: Channel directory and single-character type identifier (`typech`).
+
+### Features & Enhancements
+- **Compact Binary Telemetry**: Implemented high-efficiency 11–24 byte binary telemetry dispatcher in `conn-hoanuk.cpp` saving 90% mobile bandwidth.
+- **RS41 Raw Packet Hex Forwarding**: Automatically forward descrambled raw 320-byte frames to `hoan.uk` cloud ingestion when local CRC fails, enabling server-side subblock recovery.
+- **SX1262 GFSK Optimization**: Optimized frequency deviation to standard 2400 Hz for Vaisala radiosondes, and fixed long-packet receive timeout handling.
+- **QRG Type Character Preservation**: Added `typech` preservation across web UI, `qrg.txt`, and `/qrg.json` API.
+- **Webflasher Deployment Tooling**: Added `prefer_env` targeting to `scripts/deploy_to_webflasher.py` for automated OTA generation.
+
+---
+
 
 ### Board: Heltec WiFi LoRa 32 V3 (SX1262 / ESP32-S3)
 

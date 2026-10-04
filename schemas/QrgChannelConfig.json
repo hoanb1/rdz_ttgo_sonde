@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QrgChannelConfig",
+  "description": "Schema for frequency channels and sonde types in qrg.txt and web interface",
+  "type": "object",
+  "properties": {
+    "channel": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50
+    },
+    "active": {
+      "type": "integer",
+      "enum": [0, 1]
+    },
+    "freq": {
+      "type": "number",
+      "minimum": 400.0,
+      "maximum": 460.0,
+      "description": "Frequency in MHz"
+    },
+    "launchsite": {
+      "type": "string",
+      "maxLength": 17,
+      "description": "Observatory / launchsite name"
+    },
+    "type": {
+      "type": "string",
+      "description": "Human-readable sonde type string (e.g. RS41, DFM, RS92, M10/M20, MP3H)"
+    },
+    "typech": {
+      "type": "string",
+      "maxLength": 1,
+      "description": "Single-character sonde type identifier: 4=RS41, N=RS41 Narrow, R=RS92, D=DFM, M=M10/M20, 3=MP3H"
+    }
+  },
+  "required": ["channel", "active", "freq", "launchsite", "type", "typech"]
+}

@@ -80,9 +80,13 @@ void ConnHoanUK::netsetup() {
     }
     huk_state = HUK_DISCONNECTED;
     huk_last_state_change = 0;
+    snprintf(huk_status_msg, sizeof(huk_status_msg), "Connecting to %s:%d",
+             sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk",
+             sonde.config.hoanuk.port > 0 ? sonde.config.hoanuk.port : 80);
     LOG_I(TAG, "Network ready, connecting to hoan.uk at %s:%d",
           sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk",
           sonde.config.hoanuk.port > 0 ? sonde.config.hoanuk.port : 80);
+    hoanuk_client_fsm();
 }
 
 void ConnHoanUK::netshutdown() {
@@ -111,26 +115,36 @@ void ConnHoanUK::hoanuk_client_fsm() {
 
         case HUK_DISCONNECTED: {
             const char *host = sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk";
-            huk_state = HUK_DNSLOOKUP;
-            err_t res = dns_gethostbyname_addrtype(host, &hoanuk_ipaddr, _huk_dns_found, NULL, LWIP_DNS_ADDRTYPE_IPV4);
-            if (res == ERR_OK) {
+            if (ipaddr_aton(host, &hoanuk_ipaddr)) {
                 huk_state = HUK_DNSRESOLVED;
-            } else if (res != ERR_INPROGRESS) {
-                huk_state = HUK_ERROR_RETRY;
-                huk_last_state_change = 0;
+                LOG_I(TAG, "Host %s is IP literal", host);
+            } else {
+                huk_state = HUK_DNSLOOKUP;
+                err_t res = dns_gethostbyname_addrtype(host, &hoanuk_ipaddr, _huk_dns_found, NULL, LWIP_DNS_ADDRTYPE_IPV4);
+                if (res == ERR_OK) {
+                    huk_state = HUK_DNSRESOLVED;
+                } else if (res != ERR_INPROGRESS) {
+                    huk_state = HUK_ERROR_RETRY;
+                    huk_last_state_change = 0;
+                    snprintf(huk_status_msg, sizeof(huk_status_msg), "DNS failed for %s", host);
+                    break;
+                } else {
+                    break;
+                }
             }
-            break;
+            // Fall through if DNS resolved immediately
         }
 
         case HUK_DNSLOOKUP:
-            // Waiting for DNS callback
-            break;
+            if (huk_state == HUK_DNSLOOKUP) break;
+            // Fall through if switched to HUK_DNSRESOLVED
 
         case HUK_DNSRESOLVED: {
             hoanuk_sock = socket(AF_INET, SOCK_STREAM, 0);
             if (hoanuk_sock < 0) {
                 huk_state = HUK_ERROR_RETRY;
                 huk_last_state_change = 0;
+                snprintf(huk_status_msg, sizeof(huk_status_msg), "Socket error %d", errno);
                 break;
             }
             int flags = fcntl(hoanuk_sock, F_GETFL);
@@ -147,11 +161,15 @@ void ConnHoanUK::hoanuk_client_fsm() {
             if (res) {
                 if (errno == EINPROGRESS) {
                     huk_state = HUK_CONNECTING;
+                    huk_last_state_change = now;
+                    snprintf(huk_status_msg, sizeof(huk_status_msg), "Connecting to %s:%d",
+                             sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk", port);
                 } else {
                     close(hoanuk_sock);
                     hoanuk_sock = -1;
                     huk_state = HUK_ERROR_RETRY;
                     huk_last_state_change = 0;
+                    snprintf(huk_status_msg, sizeof(huk_status_msg), "Connect error %d", errno);
                 }
             } else {
                 huk_state = HUK_CONN_IDLE;
@@ -162,6 +180,14 @@ void ConnHoanUK::hoanuk_client_fsm() {
         }
 
         case HUK_CONNECTING: {
+            if (now - huk_last_state_change > 8) {
+                close(hoanuk_sock);
+                hoanuk_sock = -1;
+                huk_state = HUK_ERROR_RETRY;
+                huk_last_state_change = 0;
+                snprintf(huk_status_msg, sizeof(huk_status_msg), "Connect timeout");
+                break;
+            }
             fd_set fdset, fdeset;
             FD_ZERO(&fdset);
             FD_SET(hoanuk_sock, &fdset);
@@ -175,6 +201,7 @@ void ConnHoanUK::hoanuk_client_fsm() {
                 hoanuk_sock = -1;
                 huk_state = HUK_ERROR_RETRY;
                 huk_last_state_change = 0;
+                snprintf(huk_status_msg, sizeof(huk_status_msg), "Select error %d", errno);
             } else if (res > 0) {
                 int sockerr = 0;
                 socklen_t len = sizeof(sockerr);
@@ -183,11 +210,13 @@ void ConnHoanUK::hoanuk_client_fsm() {
                     hoanuk_sock = -1;
                     huk_state = HUK_ERROR_RETRY;
                     huk_last_state_change = 0;
+                    snprintf(huk_status_msg, sizeof(huk_status_msg), "Socket err %d", sockerr);
                 } else {
                     huk_state = HUK_CONN_IDLE;
                     int port = sonde.config.hoanuk.port > 0 ? sonde.config.hoanuk.port : 80;
                     snprintf(huk_status_msg, sizeof(huk_status_msg), "Connected to %s:%d",
                              sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk", port);
+                    LOG_I(TAG, "Connected to %s:%d", sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk", port);
                 }
             }
             break;
@@ -210,6 +239,55 @@ void ConnHoanUK::hoanuk_client_fsm() {
     }
 }
 
+void ConnHoanUK::sendBinaryPayload(const char *deviceId, const uint8_t *payload, int len) {
+    if (hoanuk_sock < 0 || (huk_state != HUK_CONN_IDLE && huk_state != HUK_CONN_SENDING)) {
+        hoanuk_client_fsm();
+        if (hoanuk_sock < 0 || (huk_state != HUK_CONN_IDLE && huk_state != HUK_CONN_SENDING)) {
+            return;
+        }
+    }
+
+    const char *host = sonde.config.hoanuk.host[0] ? sonde.config.hoanuk.host : "api.hoan.uk";
+    const char *path = sonde.config.hoanuk.path[0] ? sonde.config.hoanuk.path : "/api/v1/telemetry/ingest";
+
+    char full_path[128];
+    snprintf(full_path, sizeof(full_path), "%s?deviceId=%s", path, deviceId);
+
+    static char http_req[384];
+    int req_len = snprintf(http_req, sizeof(http_req),
+        "POST %s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "User-Agent: rdzTTGOsonde/%s\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        "X-Device-Id: %s\r\n"
+        "Content-Length: %d\r\n"
+        "Connection: keep-alive\r\n",
+        full_path, host, version_id, deviceId, len);
+
+    if (sonde.config.hoanuk.token[0]) {
+        req_len += snprintf(http_req + req_len, sizeof(http_req) - req_len,
+            "Authorization: Bearer %s\r\n", sonde.config.hoanuk.token);
+    }
+
+    req_len += snprintf(http_req + req_len, sizeof(http_req) - req_len, "\r\n");
+
+    if (req_len + len <= (int)sizeof(http_req)) {
+        memcpy(http_req + req_len, payload, len);
+        req_len += len;
+        int sent = send(hoanuk_sock, http_req, req_len, 0);
+        if (sent < 0) {
+            LOG_W(TAG, "Failed to send binary telemetry to hoan.uk: errno %d", errno);
+            close(hoanuk_sock);
+            hoanuk_sock = -1;
+            huk_state = HUK_ERROR_RETRY;
+            huk_last_state_change = 0;
+        } else {
+            LOG_I(TAG, "Ingested %d bytes binary telemetry (%d bytes body) for %s to hoan.uk", sent, len, deviceId);
+            snprintf(huk_status_msg, sizeof(huk_status_msg), "Ingested BIN OK (%lu)", millis() / 1000);
+        }
+    }
+}
+
 void ConnHoanUK::sendPayload(const char *json_body) {
     if (hoanuk_sock < 0 || huk_state != HUK_CONN_IDLE) {
         hoanuk_client_fsm();
@@ -222,7 +300,7 @@ void ConnHoanUK::sendPayload(const char *json_body) {
     const char *path = sonde.config.hoanuk.path[0] ? sonde.config.hoanuk.path : "/api/v1/telemetry/ingest";
     int body_len = strlen(json_body);
 
-    char http_req[HOANUK_BUFFER_SIZE + 512];
+    static char http_req[HOANUK_BUFFER_SIZE + 512];
     int req_len = snprintf(http_req, sizeof(http_req),
         "POST %s HTTP/1.1\r\n"
         "Host: %s\r\n"
@@ -254,12 +332,11 @@ void ConnHoanUK::sendPayload(const char *json_body) {
 
 void ConnHoanUK::updateSonde(SondeInfo *si) {
     if (!sonde.config.hoanuk.active) return;
+    hoanuk_client_fsm();
     if (!si) return;
 
     // Rate-limit to max 1 packet per 2 seconds
     if (millis() - huk_last_send < 2000) return;
-
-    hoanuk_client_fsm();
 
     char callsign[32];
     uint8_t realtype = si->type;
@@ -286,88 +363,121 @@ void ConnHoanUK::updateSonde(SondeInfo *si) {
     }
 
     bool has_valid_fix = (VALIDPOS(si->d.validPos) && (fabsf(si->d.lat) > 0.001f || fabsf(si->d.lon) > 0.001f));
-    float speed_kmh = (si->d.validPos & 0x10) ? (si->d.hs * 3.6f) : 0.0f;
-    float dew_point = calculateDewPoint(si->d.temperature, si->d.relativeHumidity);
 
-    // Build ISO timestamp
+    // Pack ultra-compact 11 to 24-byte binary telemetry (Version 1)
+    uint8_t bin_buf[32];
+    int bin_len = 0;
+
+    bin_buf[bin_len++] = 0x01; // Version 1
+
+    uint8_t flags = 0;
+    if (has_valid_fix) {
+        flags |= 0x01; // Bit 0: GPS lat, lon
+        flags |= 0x02; // Bit 1: Alt, speed
+        flags |= 0x04; // Bit 2: Heading, sats
+    }
+    flags |= 0x08; // Bit 3: Temperature & Pressure
+    flags |= 0x10; // Bit 4: Humidity & PM2.5
+    flags |= 0x20; // Bit 5: Battery voltage
+
+    bin_buf[bin_len++] = flags;
+
+    if (has_valid_fix) {
+        // Bit 0: lat, lon (8 bytes, int32 little-endian, scale 1e6)
+        int32_t lat_1e6 = (int32_t)(si->d.lat * 1000000.0f);
+        int32_t lon_1e6 = (int32_t)(si->d.lon * 1000000.0f);
+        memcpy(bin_buf + bin_len, &lat_1e6, 4); bin_len += 4;
+        memcpy(bin_buf + bin_len, &lon_1e6, 4); bin_len += 4;
+
+        // Bit 1: Alt & Speed (3 bytes: int16 m, uint8 km/h)
+        int16_t alt_m = (si->d.alt > 32767.0f) ? (int16_t)((uint16_t)si->d.alt) : (int16_t)si->d.alt;
+        uint8_t speed_kmh = (si->d.validPos & 0x10) ? (uint8_t)fminf(si->d.hs * 3.6f, 255.0f) : 0;
+        memcpy(bin_buf + bin_len, &alt_m, 2); bin_len += 2;
+        bin_buf[bin_len++] = speed_kmh;
+
+        // Bit 2: Heading & Sats (2 bytes: heading/2, sats)
+        uint8_t heading_div2 = (uint8_t)(fminf(fmaxf(si->d.dir, 0.0f), 360.0f) / 2.0f);
+        uint8_t sats = (si->d.validPos & 0x40) ? (uint8_t)si->d.sats : 0;
+        bin_buf[bin_len++] = heading_div2;
+        bin_buf[bin_len++] = sats;
+    }
+
+    // Bit 3: Temperature & Pressure (4 bytes: int16 temp*100, uint16 press*10)
+    int16_t temp_100 = !isnan(si->d.temperature) ? (int16_t)(si->d.temperature * 100.0f) : 0;
+    uint16_t press_10 = (!isnan(si->d.pressure) && si->d.pressure > 0.0f) ? (uint16_t)(si->d.pressure * 10.0f) : 0;
+    memcpy(bin_buf + bin_len, &temp_100, 2); bin_len += 2;
+    memcpy(bin_buf + bin_len, &press_10, 2); bin_len += 2;
+
+    // Bit 4: Humidity & PM2.5 (3 bytes: uint8 hum, uint16 pm25=0)
+    uint8_t hum = !isnan(si->d.relativeHumidity) ? (uint8_t)fminf(fmaxf(si->d.relativeHumidity, 0.0f), 100.0f) : 0;
+    uint16_t pm25 = 0;
+    bin_buf[bin_len++] = hum;
+    memcpy(bin_buf + bin_len, &pm25, 2); bin_len += 2;
+
+    // Bit 5: Battery voltage in mV (2 bytes: uint16 mV)
+    uint16_t batt_mv = (si->d.batteryVoltage > 0.0f) ? (uint16_t)(si->d.batteryVoltage * 1000.0f) : 0;
+    memcpy(bin_buf + bin_len, &batt_mv, 2); bin_len += 2;
+
+    sendBinaryPayload(callsign, bin_buf, bin_len);
+    huk_last_send = millis();
+}
+
+void ConnHoanUK::updateRawPacket(const uint8_t *raw, int len, float freq, int rssi) {
+    if (!sonde.config.hoanuk.active) return;
+    if (!raw || len <= 0) return;
+
+    // Rate-limit raw forwarding to max 1 packet per second
+    if (millis() - huk_last_send < 1000) return;
+
+    hoanuk_client_fsm();
+
+    // Check if subblock 'y' contains a readable serial
+    char callsign[32] = "RS41-RAW";
+    int p = 57;
+    while (p < len - 12) {
+        uint8_t typ = raw[p++];
+        uint32_t blen = raw[p++] + 2UL;
+        if (p + blen > (uint32_t)len) break;
+        if (typ == 'y') {
+            snprintf(callsign, 9, "%s", (const char *)(raw + p + 2));
+            callsign[8] = 0;
+            for (int k = 0; k < 8; k++) {
+                if (callsign[k] == ' ' || callsign[k] == 0) { callsign[k] = 0; break; }
+            }
+            break;
+        }
+        p += blen;
+    }
+    if (callsign[0] == 0) strcpy(callsign, "RS41-RAW");
+
+    // Convert raw bytes to hex string (up to 320 bytes = 640 hex chars)
+    static char hex_buf[700];
+    int max_bytes = len > 320 ? 320 : len;
+    for (int i = 0; i < max_bytes; i++) {
+        sprintf(hex_buf + (i * 2), "%02x", raw[i]);
+    }
+    hex_buf[max_bytes * 2] = 0;
+
+    // Current ISO timestamp
     struct tm tim;
-    time_t t = si->d.time ? (time_t)si->d.time : (time_t)time(NULL);
+    time_t t = time(NULL);
     gmtime_r(&t, &tim);
     char time_str[32];
     snprintf(time_str, sizeof(time_str), "%04d-%02d-%02dT%02d:%02d:%02dZ",
              tim.tm_year + 1900, tim.tm_mon + 1, tim.tm_mday,
              tim.tm_hour, tim.tm_min, tim.tm_sec);
 
-    char json_buf[HOANUK_BUFFER_SIZE];
-    int len = snprintf(json_buf, sizeof(json_buf),
+    static char json_buf[HOANUK_BUFFER_SIZE];
+    snprintf(json_buf, sizeof(json_buf),
         "{\"deviceId\":\"%s\","
         "\"deviceType\":\"radiosonde\","
-        "\"stationRole\":\"%s\","
-        "\"protocol\":\"%s\","
+        "\"stationRole\":\"stationary\","
+        "\"protocol\":\"rs41_raw_forward\","
         "\"timestamp\":\"%s\","
-        "\"speed\":%.1f,"
-        "\"sats\":%d,"
-        "\"system_voltage\":%.2f",
-        callsign,
-        speed_kmh >= 2.5f ? "mobile" : "stationary",
-        proto_name,
-        time_str,
-        speed_kmh,
-        (si->d.validPos & 0x40) ? si->d.sats : 0,
-        si->d.batteryVoltage > 0 ? si->d.batteryVoltage : 0.0f
-    );
-
-    if (has_valid_fix) {
-        len += snprintf(json_buf + len, sizeof(json_buf) - len,
-            ",\"lat\":%.6f,\"lon\":%.6f,\"alt\":%.1f,"
-            "\"vs\":%.1f,\"hs\":%.1f,\"dir\":%.1f,"
-            "\"location\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%.1f,\"speed\":%.1f,\"vs\":%.1f,\"dir\":%.1f,\"sats\":%d,\"gps_fix\":true}",
-            si->d.lat, si->d.lon, si->d.alt,
-            si->d.vs, si->d.hs, si->d.dir,
-            si->d.lat, si->d.lon, si->d.alt, speed_kmh, si->d.vs, si->d.dir,
-            (si->d.validPos & 0x40) ? si->d.sats : 0
-        );
-    } else {
-        len += snprintf(json_buf + len, sizeof(json_buf) - len,
-            ",\"location\":{\"speed\":%.1f,\"sats\":%d,\"gps_fix\":false}",
-            speed_kmh, (si->d.validPos & 0x40) ? si->d.sats : 0
-        );
-    }
-
-    // Environment block
-    len += snprintf(json_buf + len, sizeof(json_buf) - len, ",\"environment\":{");
-    bool has_env = false;
-    if (!isnan(si->d.temperature)) {
-        len += snprintf(json_buf + len, sizeof(json_buf) - len, "\"temperature\":%.1f", si->d.temperature);
-        has_env = true;
-    }
-    if (!isnan(si->d.relativeHumidity)) {
-        len += snprintf(json_buf + len, sizeof(json_buf) - len, "%s\"humidity\":%.1f", has_env ? "," : "", si->d.relativeHumidity);
-        has_env = true;
-    }
-    if (!isnan(si->d.pressure) && si->d.pressure > 0) {
-        len += snprintf(json_buf + len, sizeof(json_buf) - len, "%s\"pressure\":%.1f", has_env ? "," : "", si->d.pressure);
-        has_env = true;
-    }
-    if (!isnan(dew_point)) {
-        len += snprintf(json_buf + len, sizeof(json_buf) - len, "%s\"dewPoint\":%.1f", has_env ? "," : "", dew_point);
-    }
-    len += snprintf(json_buf + len, sizeof(json_buf) - len, "}");
-
-    // System and raw stats
-    len += snprintf(json_buf + len, sizeof(json_buf) - len,
-        ",\"system\":{\"voltage\":%.2f,\"rssi\":%d,\"freq\":%.3f,\"frame\":%u},"
-        "\"raw\":{\"callsign\":\"%s\",\"type\":\"%s\",\"freq\":%.3f,\"rssi\":%d}"
+        "\"payload_hex\":\"%s\","
+        "\"system\":{\"freq\":%.3f,\"rssi\":%d}"
         "}",
-        si->d.batteryVoltage > 0 ? si->d.batteryVoltage : 0.0f,
-        si->rssi,
-        si->freq,
-        si->d.frame,
-        callsign,
-        sondeTypeStrSH[realtype],
-        si->freq,
-        si->rssi
-    );
+        callsign, time_str, hex_buf, freq, rssi);
 
     sendPayload(json_buf);
     huk_last_send = millis();

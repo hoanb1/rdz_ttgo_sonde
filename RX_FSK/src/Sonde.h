@@ -139,6 +139,7 @@ typedef struct st_sondeinfo {
         // receiver configuration
 	bool active;
         SondeType type;
+        char typech;
         float freq;
 	char launchsite[18];		
 
@@ -396,7 +397,7 @@ public:
 	void setConfig(const char *str);
 
 	void clearSonde();
-	void addSonde(float frequency, SondeType type, int active, char *launchsite);
+	void addSonde(float frequency, SondeType type, int active, char *launchsite, char typech = 0);
 	void nextConfig();
 	void nextRxSonde();
 	void nextRxFreq(int addkhz);

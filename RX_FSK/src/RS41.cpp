@@ -743,6 +743,8 @@ int RS41::decode41(byte *data, int maxlen)
 	Serial.println();
 #endif
 	int p = 57; // 8 byte header, 48 byte RS 
+	snprintf(last_rx_debug, sizeof(last_rx_debug), "d56=%02X d57=%02X d58=%02X d59=%02X d60=%02X",
+	         data[56], data[57], data[58], data[59], data[60]);
 	while(p<maxlen) {  /* why 555? */
 		uint8_t typ = data[p++];
 		uint32_t len = data[p++]+2UL;
@@ -763,14 +765,20 @@ int RS41::decode41(byte *data, int maxlen)
 			Serial.print(buf);
 		}
 #endif
-		// check CRC
+				// check CRC
+		int found_79 = -1;
+		for(int k=0; k<maxlen; k++) { if(data[k] == 0x79) { found_79 = k; break; } }
 		if(!crcrs(data, 560, p, p+len)) {
 			Serial.println("###CRC ERROR###");
+			snprintf(last_rx_debug, sizeof(last_rx_debug), "CRC_ERR at79=%d typ=0x%02X len=%d d56=%02X d57=%02X d58=%02X",
+			         found_79, typ, len, data[56], data[57], data[58]);
 			crcok = 0;
 		} else {	
 		switch(typ) {
 		case 'y': // name
 			{
+			snprintf(last_rx_debug, sizeof(last_rx_debug), "OK_Y at79=%d id=%.8s vf=%d", found_79, (char*)(data+p+2), (int)(data[p]+(data[p+1]<<8)));
+			
 			if(strncmp(si->id, (const char *)(data+p+2), 8)) {
 				// ID changed, i.e. new sonde on same frequency. clear calibration and all other data
 				sonde.clearAllData(sonde.si());
@@ -965,26 +973,19 @@ static uint8_t scramble[64] = {150U,131U,62U,81U,177U,73U,8U,152U,50U,5U,89U,
 
 
 int RS41::receive() {
-	sx1278.setPayloadLength(RS41MAXLEN-8); 
-	int e = sx1278.receivePacketTimeout(1000, data+8);
-#if 1
-	if(e) { /*Serial.println("TIMEOUT");*/ return RX_TIMEOUT; } 
+	memcpy(data, rs41SetupCfg.sync_data, 8);
+	sx1278.setPayloadLength(RS41MAXLEN - 8); 
+	int e = sx1278.receivePacketTimeout(1000, data + 8);
+	if(e == 1) { return RX_TIMEOUT; } 
 
-        for(int i=0; i<RS41MAXLEN; i++) { data[i] = reverse(data[i]); }
-        for(int i=0; i<RS41MAXLEN; i++) { data[i] = data[i] ^ scramble[i&0x3F]; }
-        return decode41(data, RS41MAXLEN);
-#else
-	// FAKE testing data
-	SondeInfo *si = sonde.si();
-	si->lat = 48;
-	si->lon = -100;
-	si->alt = 30000;
-	si->vs = 3.4;
-	si->validPos = 0x7f;
-	si->validID = 1;
-	strcpy(si->id, "A1234");
-	return 0;
-#endif
+        for(int i = 8; i < RS41MAXLEN; i++) { data[i] = reverse(data[i]); }
+        for(int i = 8; i < RS41MAXLEN; i++) { data[i] = data[i] ^ scramble[i & 0x3F]; }
+        for(int i = 50; i < 120; i++) {
+            snprintf(last_rx_hex + ((i - 50) * 2), 3, "%02X", data[i]);
+        }
+        last_rx_hex[140] = 0;
+        int res = decode41(data, RS41MAXLEN);
+        return (res == 0) ? RX_OK : ((e == 2) ? RX_ERROR : res);
 }
 
 int RS41::waitRXcomplete() {
@@ -1006,5 +1007,13 @@ int RS41::getSubtype(char *buf, int buflen, SondeInfo *si) {
 	Serial.printf("subframe valid: %x%08x; subtype=%s\n", (uint32_t)(sf->valid>>32), (uint32_t)sf->valid, buf);
 	return 0;
 }
+
+uint8_t* RS41::getRawData(int *len) {
+	if (len) *len = RS41MAXLEN;
+	return data;
+}
+
+char RS41::last_rx_hex[256] = "";
+char RS41::last_rx_debug[128] = "init";
 
 RS41 rs41 = RS41();
