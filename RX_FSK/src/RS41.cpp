@@ -442,7 +442,7 @@ void wgs84r(double x, double y, double z,
 } /* end wgs84r() */
 
 // returns: 0=ok, -1=error
-static void posrs41(const byte b[], uint32_t b_len, uint32_t p)
+static int posrs41(const byte b[], uint32_t b_len, uint32_t p)
 {
    double dir;
    double vu;
@@ -466,7 +466,7 @@ static void posrs41(const byte b[], uint32_t b_len, uint32_t p)
    if( x==0 && y==0 && z==0 ) {
       // RS41 sometimes sends frame with all 0
       if(si->validPos) si->validPos |= 0x80; // flag as old
-      return;           
+      return -1;           
    }          
 
    wgs84r(x, y, z, &lat, &long0, &heig);
@@ -474,13 +474,13 @@ static void posrs41(const byte b[], uint32_t b_len, uint32_t p)
    float new_lon = (float)(long0 * (180.0 / M_PI));
    float new_alt = (float)heig;
 
-   // Plausibility Check
+   // Plausibility Check: strict physical limits for weather balloon
    if (isnan(new_lat) || isnan(new_lon) || isnan(new_alt) ||
        new_lat < -90.0f || new_lat > 90.0f || new_lon < -180.0f || new_lon > 180.0f ||
        new_alt > 55000.0f || new_alt < -500.0f) {
       Serial.printf(" [GPS Out of bounds: lat:%.5f, lon:%.5f, alt:%.1f] ", new_lat, new_lon, new_alt);
       if (si->validPos) si->validPos |= 0x80;
-      return;
+      return -1;
    }
 
    // Kinematic Consistency Filter: check for multipath jumps & smooth jitter
@@ -494,7 +494,7 @@ static void posrs41(const byte b[], uint32_t b_len, uint32_t p)
       if (horizontal_jump > 200.0f || vertical_jump > 60.0f) {
          Serial.printf(" [GPS Kinematic Outlier: dH=%.1fm, dV=%.1fm] ", horizontal_jump, vertical_jump);
          si->validPos |= 0x80; // keep previous position as old
-         return;
+         return -1;
       }
 
       // Adaptive satellite-weighted Alpha-Beta smoothing filter to minimize GPS multipath jitter
@@ -514,16 +514,6 @@ static void posrs41(const byte b[], uint32_t b_len, uint32_t p)
       new_alt = si->alt + alpha * (new_alt - si->alt);
    }
 
-   si->lat = new_lat;
-   Serial.print(" ");
-   Serial.print(si->lat, 5);
-   Serial.print(" ");
-   si->lon = new_lon;
-   Serial.print(si->lon, 5);
-   Serial.print(" ");
-   Serial.print(new_alt, 1);
-   Serial.print("m");
-
    /*speed */
    vx = (double)getint16(b, b_len, p+12UL)*0.01;
    vy = (double)getint16(b, b_len, p+14UL)*0.01;
@@ -531,27 +521,51 @@ static void posrs41(const byte b[], uint32_t b_len, uint32_t p)
    vn = (-(vx*sin(lat)*cos(long0))-vy*sin(lat)*sin(long0))+vz*cos(lat);
    ve = -(vx*sin(long0))+vy*cos(long0);
    vu = vx*cos(lat)*cos(long0)+vy*cos(lat)*sin(long0)+vz*sin(lat);
+   float calc_hs = sqrtf((float)(vn*vn+ve*ve));
+   float calc_vs = (float)vu;
+
+   // Sanity check velocity: balloon max horizontal speed <= 100 m/s (~360 km/h), max climb/descent <= 100 m/s
+   if (calc_hs > 100.0f || fabsf(calc_vs) > 100.0f || isnan(calc_hs) || isnan(calc_vs)) {
+      Serial.printf(" [GPS Velocity Outlier: hs=%.1f m/s, vs=%.1f m/s] ", calc_hs, calc_vs);
+      if (si->validPos) si->validPos |= 0x80;
+      return -1;
+   }
+
+   si->lat = new_lat;
+   si->lon = new_lon;
+   si->alt = new_alt;
+   si->hs = calc_hs;
+   si->vs = calc_vs;
+
    dir = atan2(ve, vn) * (180.0 / M_PI);
    if (dir<0.0) dir = 360.0+dir;
    si->dir = dir;
+
    Serial.print(" ");
-   si->hs = sqrt(vn*vn+ve*ve);
-   Serial.print(si->hs*3.6);
+   Serial.print(si->lat, 5);
+   Serial.print(" ");
+   Serial.print(si->lon, 5);
+   Serial.print(" ");
+   Serial.print(new_alt, 1);
+   Serial.print("m ");
+   Serial.print(si->hs*3.6f);
    Serial.print("km/h ");
    Serial.print(dir);
    Serial.print("deg ");
-   Serial.print((float)vu);
-   si->vs = vu;
+   Serial.print(si->vs);
    Serial.print("m/s ");
-   si->alt = new_alt;
+
    if( 0==(int)(lat*10000) && 0==(int)(long0*10000) ) {
       if(si->validPos) {
-	// we have an old position, so keep previous position and mark it as old
-	si->validPos |= 0x80;
+         // we have an old position, so keep previous position and mark it as old
+         si->validPos |= 0x80;
       }
+      return -1;
    }
-   else
+   else {
       si->validPos = 0x7f;
+      return 0;
+   }
 } /* end posrs41() */
 
 static uint32_t rs41date(const uint8_t f[])
@@ -869,18 +883,25 @@ int RS41::decode41(byte *data, int maxlen)
 			}
 			break;
 		case '{': // pos
-			posrs41(data+p, len, 0);
-			si->sats = (data+p)[18];
-			Serial.printf("sats: %d\n", si->sats);
-			if (si->sats < 4 && si->sats > 0) {
-				if (si->validPos) si->validPos |= 0x80;
+			if (posrs41(data+p, len, 0) == 0) {
+				uint8_t raw_sats = (data+p)[18];
+				si->sats = (raw_sats <= 36) ? raw_sats : 0;
+				Serial.printf("sats: %d\n", si->sats);
+				if (si->sats < 4 && si->sats > 0) {
+					if (si->validPos) si->validPos |= 0x80;
+				}
+				posok = 1;
+			} else {
+				posok = 0;
 			}
-			posok = 1;
 			break;
 		case '\202':    // pos, new X version
-			posrs41(data+p, len, 0);
-			si->time = rs41date(data+p+18) - 18;
-			posok = 1;
+			if (posrs41(data+p, len, 0) == 0) {
+				si->time = rs41date(data+p+18) - 18;
+				posok = 1;
+			} else {
+				posok = 0;
+			}
 			break;
 		case '\203':   // sat info, new X version
 		{
@@ -888,7 +909,7 @@ int RS41::decode41(byte *data, int maxlen)
 			for(int i=0; i<32; i++) {
 				if( (data+p)[18+i/8] & (1<<(i&7)) ) sats++;
 			}
-			si->sats = sats;
+			si->sats = (sats <= 36) ? sats : 0;
 			if (sats < 4 && sats > 0) {
 				if (si->validPos) si->validPos |= 0x80;
 			}

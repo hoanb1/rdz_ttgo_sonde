@@ -427,7 +427,7 @@ void ConnHoanUK::updateSonde(SondeInfo *si) {
 
         // Bit 2: Heading & Sats (2 bytes: heading/2, sats)
         uint8_t heading_div2 = (uint8_t)(fminf(fmaxf(si->d.dir, 0.0f), 360.0f) / 2.0f);
-        uint8_t sats = (si->d.validPos & 0x40) ? (uint8_t)si->d.sats : 0;
+        uint8_t sats = (si->d.validPos & 0x40) ? (uint8_t)fminf(fmaxf((float)si->d.sats, 0.0f), 36.0f) : 0;
         bin_buf[bin_len++] = heading_div2;
         bin_buf[bin_len++] = sats;
     }
@@ -478,7 +478,19 @@ void ConnHoanUK::updateRawPacket(const uint8_t *raw, int len, float freq, int rs
         }
         p += blen;
     }
-    if (callsign[0] == 0) strcpy(callsign, "RS41-RAW");
+    // Validate serial callsign format: RS41 serial is 8 alphanumeric chars, first char is uppercase letter
+    bool valid_callsign = (strlen(callsign) == 8 && callsign[0] >= 'A' && callsign[0] <= 'Z');
+    if (valid_callsign) {
+        for (int k = 1; k < 8; k++) {
+            if (!isalnum((unsigned char)callsign[k])) { valid_callsign = false; break; }
+        }
+    }
+    if (!valid_callsign) strcpy(callsign, "RS41-RAW");
+
+    // Convert raw RSSI value to true negative dBm:
+    // In rdz_ttgo_sonde, rssi is stored as positive uint8 representing 2 * (-dBm)
+    // E.g. raw 214 -> -107.0 dBm. If already negative, keep it.
+    float rssi_dbm = (rssi > 0) ? -((float)rssi / 2.0f) : (float)rssi;
 
     // Convert raw bytes to hex string (up to 320 bytes = 640 hex chars)
     static char hex_buf[700];
@@ -505,9 +517,9 @@ void ConnHoanUK::updateRawPacket(const uint8_t *raw, int len, float freq, int rs
         "\"protocol\":\"rs41_raw_forward\","
         "\"timestamp\":\"%s\","
         "\"payload_hex\":\"%s\","
-        "\"system\":{\"freq\":%.3f,\"rssi\":%d}"
+        "\"system\":{\"freq\":%.3f,\"rssi\":%.1f}"
         "}",
-        callsign, time_str, hex_buf, freq, rssi);
+        callsign, time_str, hex_buf, freq, rssi_dbm);
 
     sendPayload(json_buf);
     huk_last_send = millis();

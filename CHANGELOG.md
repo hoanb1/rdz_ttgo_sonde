@@ -4,6 +4,20 @@ All notable changes to the rdz_ttgo_sonde firmware are documented in this file.
 
 ---
 
+## [1.3.4-hoanuk] - 2026-10-05
+
+### Bug Fixes & Reliability
+- **GPS Sanity & Plausibility Guard (`RS41.cpp`)**:
+  - Refactored `posrs41()` to return explicit status codes (0 on success, -1 on failure).
+  - Enforced strict physical sanity guards on velocity: reject packets with horizontal speed > 100 m/s (~360 km/h) or vertical speed > 100 m/s.
+  - Linked `posok` directly to `posrs41()` success: frames with corrupt coordinates, all-zero ECEF, out-of-bounds, or kinematic jumps will no longer falsely set `posok = 1`.
+  - Sanitized satellite count to physical limits (<= 36 sats) to eliminate corrupted 200+ sats spikes.
+- **RSSI Normalization (`conn-hoanuk.cpp`)**:
+  - Corrected raw RSSI conversion from uint8 attenuation register (`2 * -dBm`) to true negative dBm (`-(rssi / 2.0f)`), preventing false positive +214 dBm spikes.
+  - Added strict regex validation for RS41 serial numbers in raw forward frames.
+
+---
+
 ## [1.3.3-hoanuk] - 2026-10-04
 
 ### Architecture: Spec-Driven & Schema-Driven Development (SDD)
