@@ -394,8 +394,8 @@ void ConnHoanUK::updateSonde(SondeInfo *si) {
 
     bool has_valid_fix = (VALIDPOS(si->d.validPos) && (fabsf(si->d.lat) > 0.001f || fabsf(si->d.lon) > 0.001f));
 
-    // Pack ultra-compact 11 to 24-byte binary telemetry (Version 1)
-    uint8_t bin_buf[32];
+    // Pack ultra-compact 11 to 32-byte binary telemetry (Version 1)
+    uint8_t bin_buf[48];
     int bin_len = 0;
 
     bin_buf[bin_len++] = 0x01; // Version 1
@@ -409,6 +409,15 @@ void ConnHoanUK::updateSonde(SondeInfo *si) {
     flags |= 0x08; // Bit 3: Temperature & Pressure
     flags |= 0x10; // Bit 4: Humidity & PM2.5
     flags |= 0x20; // Bit 5: Battery voltage
+
+    bool has_valid_time = (si->d.time > 1577836800); // Decoded GPS epoch after 2020-01-01
+    bool has_valid_frame = (si->d.vframe > 0);
+    if (has_valid_time) {
+        flags |= 0x40; // Bit 6: GPS timestamp (uint32 epoch)
+    }
+    if (has_valid_frame) {
+        flags |= 0x80; // Bit 7: Frame number (uint32)
+    }
 
     bin_buf[bin_len++] = flags;
 
@@ -448,6 +457,18 @@ void ConnHoanUK::updateSonde(SondeInfo *si) {
     uint16_t batt_mv = (si->d.batteryVoltage > 0.0f) ? (uint16_t)(si->d.batteryVoltage * 1000.0f) : 0;
     memcpy(bin_buf + bin_len, &batt_mv, 2); bin_len += 2;
 
+    // Bit 6: GPS timestamp in seconds (4 bytes: uint32 LE)
+    if (has_valid_time) {
+        uint32_t t_sec = (uint32_t)si->d.time;
+        memcpy(bin_buf + bin_len, &t_sec, 4); bin_len += 4;
+    }
+
+    // Bit 7: Frame number (4 bytes: uint32 LE)
+    if (has_valid_frame) {
+        uint32_t fr = (uint32_t)si->d.vframe;
+        memcpy(bin_buf + bin_len, &fr, 4); bin_len += 4;
+    }
+
     sendBinaryPayload(callsign, bin_buf, bin_len);
     huk_last_send = millis();
 }
@@ -461,14 +482,18 @@ void ConnHoanUK::updateRawPacket(const uint8_t *raw, int len, float freq, int rs
 
     hoanuk_client_fsm();
 
-    // Check if subblock 'y' contains a readable serial
+    // Check if subblock 'y' contains a readable serial and frame number
     char callsign[32] = "RS41-RAW";
+    uint32_t frame_num = 0;
+    bool has_frame = false;
     int p = 57;
     while (p < len - 12) {
         uint8_t typ = raw[p++];
         uint32_t blen = raw[p++] + 2UL;
         if (p + blen > (uint32_t)len) break;
         if (typ == 'y') {
+            frame_num = (uint32_t)raw[p] | ((uint32_t)raw[p + 1] << 8);
+            has_frame = true;
             snprintf(callsign, 9, "%s", (const char *)(raw + p + 2));
             callsign[8] = 0;
             for (int k = 0; k < 8; k++) {
@@ -510,16 +535,30 @@ void ConnHoanUK::updateRawPacket(const uint8_t *raw, int len, float freq, int rs
              tim.tm_hour, tim.tm_min, tim.tm_sec);
 
     static char json_buf[HOANUK_BUFFER_SIZE];
-    snprintf(json_buf, sizeof(json_buf),
-        "{\"deviceId\":\"%s\","
-        "\"deviceType\":\"radiosonde\","
-        "\"stationRole\":\"stationary\","
-        "\"protocol\":\"rs41_raw_forward\","
-        "\"timestamp\":\"%s\","
-        "\"payload_hex\":\"%s\","
-        "\"system\":{\"freq\":%.3f,\"rssi\":%.1f}"
-        "}",
-        callsign, time_str, hex_buf, freq, rssi_dbm);
+    if (has_frame) {
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"deviceId\":\"%s\","
+            "\"deviceType\":\"radiosonde\","
+            "\"stationRole\":\"stationary\","
+            "\"protocol\":\"rs41_raw_forward\","
+            "\"frame\":%lu,"
+            "\"timestamp\":\"%s\","
+            "\"payload_hex\":\"%s\","
+            "\"system\":{\"freq\":%.3f,\"rssi\":%.1f}"
+            "}",
+            callsign, (unsigned long)frame_num, time_str, hex_buf, freq, rssi_dbm);
+    } else {
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"deviceId\":\"%s\","
+            "\"deviceType\":\"radiosonde\","
+            "\"stationRole\":\"stationary\","
+            "\"protocol\":\"rs41_raw_forward\","
+            "\"timestamp\":\"%s\","
+            "\"payload_hex\":\"%s\","
+            "\"system\":{\"freq\":%.3f,\"rssi\":%.1f}"
+            "}",
+            callsign, time_str, hex_buf, freq, rssi_dbm);
+    }
 
     sendPayload(json_buf);
     huk_last_send = millis();
