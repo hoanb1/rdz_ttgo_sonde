@@ -24,6 +24,8 @@
 extern const char *version_name;
 extern const char *version_id;
 
+#define SONDEHUB_SOFTWARE_NAME "rdzTTGOsonde"
+
 #define SONDEHUB_STATION_UPDATE_TIME (60*60*1000) // 60 min
 #define SONDEHUB_MOBILE_STATION_UPDATE_TIME (30*1000) // 30 sec
 
@@ -490,7 +492,7 @@ void ConnSondehub::updateStation( PosInfo *pi ) {
             "\"software_name\": \"%s\","
             "\"software_version\": \"%s\","
             "\"uploader_callsign\": \"%s\",",
-            version_name, version_id, conf->callsign);
+            SONDEHUB_SOFTWARE_NAME, version_id, conf->callsign);
     w += strlen(w);
 
     // Only send email if provided
@@ -629,8 +631,17 @@ void ConnSondehub::sondehub_send_data(SondeInfo * s) {
     time(&now);
     gmtime_r(&now, &timeinfo);
     if (timeinfo.tm_year <= (2016 - 1900)) {
-        LOG_E(TAG, "Failed to obtain time\n");
-        return;
+        // If NTP has not synced yet, auto-sync system clock from sonde's decoded GPS time
+        if (s->d.time > 1600000000) {
+            struct timeval tv = { (time_t)s->d.time, 0 };
+            settimeofday(&tv, NULL);
+            time(&now);
+            gmtime_r(&now, &timeinfo);
+            LOG_I(TAG, "Synced system clock from sonde GPS time: %ld\n", (long)now);
+        } else {
+            LOG_E(TAG, "Failed to obtain time\n");
+            return;
+        }
     }
 
     // Check if current sonde data is valid. If not, don't do anything....
@@ -656,6 +667,8 @@ void ConnSondehub::sondehub_send_data(SondeInfo * s) {
     memset(rs_msg, 0, MSG_SIZE);
     w = rs_msg;
 
+    float sh_rssi = (s->rssi > 0) ? -((float)s->rssi / 2.0f) : (float)s->rssi;
+
     sprintf(w,
             " {"
             "\"software_name\": \"%s\","
@@ -675,12 +688,12 @@ void ConnSondehub::sondehub_send_data(SondeInfo * s) {
             "\"rssi\": %.1f,"
             "\"frame\": %d,"
             "\"type\": \"%s\",",
-            version_name, version_id, conf->callsign,
+            SONDEHUB_SOFTWARE_NAME, version_id, conf->callsign,
             timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
             manufacturer_string[realtype], s->d.ser,
             ts.tm_year + 1900, ts.tm_mon + 1, ts.tm_mday, ts.tm_hour, ts.tm_min, ts.tm_sec,
             (float)s->d.lat, (float)s->d.lon, (float)s->d.alt, (float)s->freq, (float)s->d.hs, (float)s->d.vs,
-            (float)s->d.dir, -((float)s->rssi / 2), s->d.vframe, sondeTypeStrSH[realtype]
+            (float)s->d.dir, sh_rssi, s->d.vframe, sondeTypeStrSH[realtype]
                 );
     w += strlen(w);
 
@@ -810,12 +823,12 @@ static const char *MONTHS[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", 
 void ConnSondehub::sondehub_send_header(SondeInfo * s, struct tm * now) {
     struct st_sondehub *conf = &sonde.config.sondehub;
     dprintf(shclient, "PUT /sondes/telemetry HTTP/1.1\r\n"
-            "Host: %s\n"
+            "Host: %s\r\n"
             "accept: text/plain\r\n"
             "Content-Type: application/json\r\n"
             "Transfer-Encoding: chunked\r\n", conf->host);
     LOG_D(TAG, "PUT /sondes/telemetry HTTP/1.1\r\n"
-            "Host: %s\n"
+            "Host: %s\r\n"
             "accept: text/plain\r\n"
             "Content-Type: application/json\r\n"
             "Transfer-Encoding: chunked\r\n", conf->host);
@@ -827,7 +840,7 @@ void ConnSondehub::sondehub_send_header(SondeInfo * s, struct tm * now) {
                 DAYS[now->tm_wday], now->tm_mday, MONTHS[now->tm_mon], now->tm_year + 1900,
                 now->tm_hour, now->tm_min, now->tm_sec);
     }
-    dprintf(shclient, "User-agent: %s/%s\n\n", version_name, version_id);
+    dprintf(shclient, "User-agent: %s/%s\r\n\r\n", SONDEHUB_SOFTWARE_NAME, version_id);
     // another cr lf as indication of end of header
 }
 void ConnSondehub::sondehub_send_next(SondeInfo * s, char *chunk, int chunklen, int first) {

@@ -15,6 +15,11 @@ All notable changes to the rdz_ttgo_sonde firmware are documented in this file.
 - **RSSI Normalization (`conn-hoanuk.cpp`)**:
   - Corrected raw RSSI conversion from uint8 attenuation register (`2 * -dBm`) to true negative dBm (`-(rssi / 2.0f)`), preventing false positive +214 dBm spikes.
   - Added strict regex validation for RS41 serial numbers in raw forward frames.
+- **SondeHub v2 Telemetry Fix (`conn-sondehub.cpp`, `version.h`)**:
+  - Fixed `software_name` whitelist rejection: SondeHub API v2 requires exact string `"rdzTTGOsonde"`, previously failed with `"This software is unknown to us!"` when using custom branding.
+  - Restored `version_name` to `"rdzTTGOsonde"` in `version.h` to also prevent space-parsing bugs in APRS-IS.
+  - Fixed RFC HTTP CRLF formatting in `PUT /sondes/telemetry` headers (`Host: %s\r\n` and `User-agent: %s/%s\r\n\r\n`).
+  - Added fallback system clock auto-synchronization from decoded radiosonde GPS time if NTP is not yet reachable or delayed.
 
 ---
 
