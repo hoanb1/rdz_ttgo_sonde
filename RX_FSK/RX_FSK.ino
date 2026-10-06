@@ -2629,16 +2629,7 @@ void loopDecoder() {
 #endif
   } else {
 #if FEATURE_HOANUK
-    if (connected && (res & 0xff) == RX_ERROR && s->type == STYPE_RS41) {
-      int rawLen = 0;
-      uint8_t *rawBuf = rs41.getRawData(&rawLen);
-      if (rawBuf && rawLen > 0) {
-        LOG_I(TAG, "RS41 decode error -> Forwarding raw packet (%d bytes) to hoan.uk", rawLen);
-        connHoanUK.updateRawPacket(rawBuf, rawLen, s->freq, s->rssi);
-      }
-    } else {
-      connHoanUK.updateSonde( NULL );
-    }
+    connHoanUK.updateSonde( NULL );
 #endif
 #if FEATURE_SONDEHUB
     connSondehub.updateSonde( NULL );
