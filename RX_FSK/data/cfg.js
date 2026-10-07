@@ -9,7 +9,7 @@ var cfgs = [
 [ "rxlon", "Receiver fixed longitude"],
 [ "rxalt", "Receiver fixed altitude"],
 [ "b2mute", "Button 2/medium press mutes LED/Buzzer (minutes)"],
-[ "", "Weak signal & Field recovery optimization (Thu sóng yếu & Tìm bóng)", "https://hoan.uk/weather/radiosonde" ],
+[ "", "Weak signal & Field recovery optimization", "https://hoan.uk/weather/radiosonde" ],
 [ "rs41.posok", "RS41 accept frame on valid GPS/ID even if auxiliary sensor CRC fails (1=enable, 0=strict CRC)" ],
 [ "norx_sticky", "Sticky lock timeout when descending near ground (seconds, default 90, 0=disable)" ],
 [ "norx_sticky_alt", "Sticky lock altitude threshold (meters, default 3000)" ],
@@ -248,9 +248,9 @@ function cfgFilter(query) {
 }
 function configTable() {
   var toolbar = "<div style=\"display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;\">" +
-    "<input type=\"text\" id=\"cfgsearch\" placeholder=\"Tìm kiếm tham số (vd: rs41, sticky, lastpos, wifi...)\" style=\"flex:1;min-width:200px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;\" onkeyup=\"cfgFilter(this.value)\"/>" +
-    "<button type=\"button\" onclick=\"cfgExpandAll(true)\" style=\"padding:7px 12px;background:#2563eb;color:#ffffff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;\">Mở tất cả</button>" +
-    "<button type=\"button\" onclick=\"cfgExpandAll(false)\" style=\"padding:7px 12px;background:#64748b;color:#ffffff;border:none;border-radius:6px;cursor:pointer;font-size:13px;\">Thu gọn</button>" +
+    "<input type=\"text\" id=\"cfgsearch\" placeholder=\"Filter parameters (e.g. rs41, sticky, lastpos, wifi...)\" style=\"flex:1;min-width:200px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;\" onkeyup=\"cfgFilter(this.value)\"/>" +
+    "<button type=\"button\" onclick=\"cfgExpandAll(true)\" style=\"padding:7px 12px;background:#2563eb;color:#ffffff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;\">Expand all</button>" +
+    "<button type=\"button\" onclick=\"cfgExpandAll(false)\" style=\"padding:7px 12px;background:#64748b;color:#ffffff;border:none;border-radius:6px;cursor:pointer;font-size:13px;\">Collapse all</button>" +
     "</div>\n";
   // iterate over cfgs
   var tab = toolbar + "<table width=\"100%\"><tr><th>Option</th><th>Value</th></tr>\n";

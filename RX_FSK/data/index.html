@@ -40,7 +40,7 @@
       const btn = document.getElementById('lp-copy-btn');
       if (btn) {
         const orig = btn.textContent;
-        btn.textContent = 'Đã chép!';
+        btn.textContent = 'Copied!';
         setTimeout(() => { btn.textContent = orig; }, 2000);
       }
     }).catch(() => {
@@ -188,32 +188,32 @@
 
 <div id="lastpos-card" style="margin-top:16px;padding:14px 16px;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
-    <span style="font-weight:600;color:#0f172a;font-size:15px;">Tọa độ bóng cuối cùng (lưu trong Flash)</span>
+    <span style="font-weight:600;color:#0f172a;font-size:15px;">Last Radiosonde Position (Flash Storage)</span>
     <span id="lp-saved-time" style="font-size:12px;color:#64748b;"></span>
   </div>
   <div id="lp-empty" style="color:#64748b;font-size:13px;padding:6px 0;">
-    Chưa có dữ liệu tọa độ lưu trong Flash (hệ thống sẽ tự động lưu khi thu nhận được bóng thám không).
+    No position saved in Flash yet (automatically stored when a radiosonde is received).
     <div style="margin-top:8px;">
-      <a href="#config" onclick="selTab(event,'Config')" style="color:#2563eb;font-size:13px;font-weight:600;text-decoration:underline;">⚙️ Cấu hình các tham số tìm bóng & lưu Flash (tab Config)</a>
+      <a href="#config" onclick="selTab(event,'Config')" style="color:#2563eb;font-size:13px;font-weight:600;text-decoration:underline;">Configure field recovery & Flash storage (Config tab)</a>
     </div>
   </div>
   <div id="lp-content" style="display:none;">
     <table style="width:100vw;max-width:1000px;border-collapse:collapse;font-size:14px;margin-bottom:12px;">
-      <tr><td style="width:140px;color:#475569;padding:4px 0;">Mã bóng (ID):</td><td><b id="lp-id" style="color:#0f172a;"></b> (<span id="lp-type"></span>, <span id="lp-freq"></span> MHz)</td></tr>
-      <tr><td style="color:#475569;padding:4px 0;">Tọa độ GPS:</td><td><b id="lp-coords" style="color:#2563eb;font-size:15px;"></b> <button type="button" id="lp-copy-btn" onclick="copyCoords()" style="margin-left:8px;padding:2px 8px;font-size:12px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:4px;cursor:pointer;">Chép</button></td></tr>
-      <tr><td style="color:#475569;padding:4px 0;">Độ cao cuối:</td><td><b id="lp-alt" style="color:#0f172a;"></b> m</td></tr>
-      <tr><td style="color:#475569;padding:4px 0;">Vận tốc / Hướng:</td><td>Rơi: <span id="lp-vs"></span> m/s | Ngang: <span id="lp-hs"></span> km/h (<span id="lp-dir"></span>&deg;)</td></tr>
+      <tr><td style="width:140px;color:#475569;padding:4px 0;">Sonde ID:</td><td><b id="lp-id" style="color:#0f172a;"></b> (<span id="lp-type"></span>, <span id="lp-freq"></span> MHz)</td></tr>
+      <tr><td style="color:#475569;padding:4px 0;">GPS Coordinates:</td><td><b id="lp-coords" style="color:#2563eb;font-size:15px;"></b> <button type="button" id="lp-copy-btn" onclick="copyCoords()" style="margin-left:8px;padding:2px 8px;font-size:12px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:4px;cursor:pointer;">Copy</button></td></tr>
+      <tr><td style="color:#475569;padding:4px 0;">Last Altitude:</td><td><b id="lp-alt" style="color:#0f172a;"></b> m</td></tr>
+      <tr><td style="color:#475569;padding:4px 0;">Velocity / Heading:</td><td>Vertical: <span id="lp-vs"></span> m/s | Horizontal: <span id="lp-hs"></span> km/h (<span id="lp-dir"></span>&deg;)</td></tr>
       <tr id="lp-pred-row" style="display:none;">
-        <td style="color:#475569;padding:4px 0;">Dự đoán tiếp đất:</td>
+        <td style="color:#475569;padding:4px 0;">Estimated Landing:</td>
         <td>
-          <b id="lp-pred-coords" style="color:#dc2626;"></b> (Độ cao: <span id="lp-pred-alt"></span>m)
-          <a id="lp-pred-maps-btn" href="#" target="_blank" style="margin-left:8px;font-size:12px;color:#2563eb;font-weight:600;text-decoration:underline;">Chỉ đường đến điểm rơi</a>
+          <b id="lp-pred-coords" style="color:#dc2626;"></b> (Alt: <span id="lp-pred-alt"></span>m)
+          <a id="lp-pred-maps-btn" href="#" target="_blank" style="margin-left:8px;font-size:12px;color:#2563eb;font-weight:600;text-decoration:underline;">Directions to landing site</a>
           <a id="lp-pred-geo-btn" href="#" style="margin-left:6px;font-size:12px;color:#7c3aed;font-weight:600;text-decoration:underline;">GEO-App</a>
         </td>
       </tr>
     </table>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-      <a id="lp-maps-dir-btn" href="#" target="_blank" class="button" style="background:#2563eb;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">Google Chỉ đường</a>
+      <a id="lp-maps-dir-btn" href="#" target="_blank" class="button" style="background:#2563eb;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">Google Navigation</a>
       <a id="lp-geo-btn" href="#" class="button" style="background:#7c3aed;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">GEO-App (OsmAnd/c:geo)</a>
       <a id="lp-apple-btn" href="#" target="_blank" class="button" style="background:#334155;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">Apple Maps</a>
       <a id="lp-osm-btn" href="#" target="_blank" class="button" style="background:#059669;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">OpenStreetMap</a>
@@ -221,7 +221,7 @@
       <a id="lp-sh-btn" href="#" target="_blank" class="button" style="background:#0284c7;color:#ffffff;font-weight:600;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">SondeHub Tracker</a>
     </div>
     <div style="border-top:1px solid #f1f5f9;padding-top:8px;">
-      <a href="#config" onclick="selTab(event,'Config')" style="color:#2563eb;font-size:13px;font-weight:600;text-decoration:underline;">⚙️ Cấu hình các tham số tìm bóng & lưu Flash (tab Config)</a>
+      <a href="#config" onclick="selTab(event,'Config')" style="color:#2563eb;font-size:13px;font-weight:600;text-decoration:underline;">Configure field recovery & Flash storage (Config tab)</a>
     </div>
   </div>
 </div>

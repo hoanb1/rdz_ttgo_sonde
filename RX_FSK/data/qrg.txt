@@ -13,8 +13,8 @@
 400.500 4 - RS41_Emergency
 
 # Safe Civilian / Amateur Channels (Vietnam ARFM Compliant)
-# 433.05 - 434.79 MHz: Băng tần ISM miễn phép cự ly ngắn (SRD <= 25mW)
-# 437.00 - 438.00 MHz: Băng tần Nghiệp dư Vô tuyến (Amateur HAB)
+# 433.05 - 434.79 MHz: ISM license-free short range devices (SRD <= 25mW)
+# 437.00 - 438.00 MHz: Amateur Radio Band (Amateur HAB)
 434.500 N + HoanUK_ISM_RS41
 437.600 N + HoanUK_Amateur_RS41
 403.000 D - DFM_Scan
