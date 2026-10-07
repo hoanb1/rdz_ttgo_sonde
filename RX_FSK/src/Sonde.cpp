@@ -186,6 +186,9 @@ void Sonde::setDefaultConfig(BoardTypes board) {
 		config.oled_sda = 17;
 		config.oled_scl = 18;
 		config.oled_rst = 21;
+		config.tft_rs = -1;
+		config.tft_cs = -1;
+		config.tft_spifreq = 0;
 		config.gps_rxd = -1;
 		config.gps_txd = -1;
 		config.batt_adc = 1;
@@ -231,6 +234,17 @@ void Sonde::defaultConfig() {
 	config.sd.miso = -1;
 	config.sd.mosi = -1;
 	config.sd.clk = -1;
+	config.sd.name = 0;
+	config.sd.speed = 4000000;
+	config.disptype = 0;
+	config.dispcontrast = -1;
+	config.tft_orient = 1;
+	config.button2_axp = 0;
+	config.norx_timeout = 20;
+	config.screenfile = 0;
+	config.tft_spifreq = SPI_DEFAULT_FREQ;
+	config.tft_rs = -1;
+	config.tft_cs = -1;
 	// Try autodetecting board type
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
 	setDefaultConfig(BOARD_HELTEC_LORA32_V3);
@@ -246,22 +260,6 @@ void Sonde::defaultConfig() {
 	config.sx1278_sck = SCK;
 	// config.oled_rst = 16;
 	config.oled_rst = -1;   // GPIO16 is Flash CS on Lora32 v1.6
-	config.sd.cs = -1;
-	config.sd.miso = -1;
-	config.sd.mosi = -1;
-	config.sd.clk = -1;
-	config.sd.name = 0;
-	config.sd.speed = 4000000;
-	config.disptype = 0;
-	config.dispcontrast = -1;
-	config.tft_orient = 1;
-	config.button2_axp = 0;
-	config.norx_timeout = 20;
-	config.screenfile = 0;
-	config.tft_spifreq = SPI_DEFAULT_FREQ;
-	// TFT RS and CS not used for LCD, if TFT detected this will be changed below
-	config.tft_rs = -1;
-	config.tft_cs = -1;
 	if(initlevels[16]==0) {
 		// Plain M5 Core Gray sometimes ends up here (without Lora/GPS board attached, or after reboot)
 		// 71 w/o GPS, 79 after reboot via flash utility

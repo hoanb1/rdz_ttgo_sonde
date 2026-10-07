@@ -123,9 +123,12 @@ var cfgs = [
 [ "sx1278_sck", "SX1278 SCK"],
 ];
 
-var tocheck = ["sd.cs", "sd.miso", "sd.mosi", "sd.clk", "oled_sda", "oled_scl", "oled_rst", "tft_rs", "tft_cs", "tft_spifreq", "button_pin", "button2_pin", 
+var tocheck = ["sd.cs", "sd.miso", "sd.mosi", "sd.clk", "oled_sda", "oled_scl", "oled_rst", "tft_rs", "tft_cs", "button_pin", "button2_pin", 
   "led_pout", "gps_rxd", "gps_txd", "batt_adc", "sx1278_ss", "sx1278_miso", "sx1278_mosi", "sx1278_sck"];
-var alloweddups = [ ["sd.mosi", "oled_sda"], ["sd.clk", "oled_scl" ] ];
+var alloweddups = [
+    ["sd.mosi", "oled_sda"], ["sd.clk", "oled_scl"],
+    ["sd.mosi", "sx1278_mosi"], ["sd.miso", "sx1278_miso"], ["sd.clk", "sx1278_sck"]
+];
 
 function isAllowedDup(nameA, nameB) {
    for (var i = 0; i < alloweddups.length; i++) {
@@ -142,18 +145,33 @@ function checkForDuplicates() {
     var valuesMap = {};
     var duplicates = [];
 
+    var disptypeEl = document.getElementsByName("disptype")[0];
+    var disptype = disptypeEl ? parseInt(disptypeEl.value, 10) : 0;
+
     // Iterate through the tocheck array
     for (var i = 0; i < tocheck.length; i++) {
         var inputName = tocheck[i];
-        var inputValue = parseInt(document.getElementsByName(inputName)[0].value, 10);
+        var el = document.getElementsByName(inputName)[0];
+        if (!el) continue;
+        var inputValue = parseInt(el.value, 10);
 
-        // Skip empty values or values that are -1
-        if (isNaN(inputValue) || inputValue === -1) {
+        // Skip empty, invalid, disabled (<0, -1, 255)
+        if (isNaN(inputValue) || inputValue < 0 || inputValue === 255) {
+            continue;
+        }
+
+        // If using OLED display (disptype != 1), ignore TFT pins (tft_rs, tft_cs)
+        if (disptype !== 1 && (inputName === "tft_rs" || inputName === "tft_cs")) {
+            continue;
+        }
+
+        // If using TFT display (disptype == 1), ignore OLED pins (oled_sda, oled_scl, oled_rst)
+        if (disptype === 1 && (inputName === "oled_sda" || inputName === "oled_scl" || inputName === "oled_rst")) {
             continue;
         }
 
         var cfg = cfgs.find(item => item[0] === inputName);
-        var descriptionB = cfg ? cfg[1] : "";
+        var descriptionB = cfg ? cfg[1] : inputName;
 
         // Check if the value is already in the map
         if (valuesMap[inputValue]) {
