@@ -2892,6 +2892,8 @@ void WiFiEvent(WiFiEvent_t event)
       Serial.print("Obtained IP address: ");
       Serial.println(WiFi.localIP());
       WiFi.STA.dnsIP(2, 0x08080808);
+      // Modem sleep adds 100-500 ms latency per packet; web transfers then stall and the browser aborts them
+      WiFi.setSleep(false);
       break;
     case ARDUINO_EVENT_WIFI_STA_LOST_IP:
       Serial.println("Lost IP address and IP address is reset to 0");
