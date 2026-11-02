@@ -553,7 +553,7 @@ void setupWifiList() {
   nNetworks = i;
   LOG_I(TAG, "%d networks in networks.txt\n", i);
   for (int j = 0; j < i; j++) {
-    LOG_I(TAG, "%s: %s\n", networks[j].id, networks[j].pw);
+    LOG_I(TAG, "%s\n", networks[j].id.c_str());
   }
 }
 
@@ -2892,6 +2892,8 @@ void WiFiEvent(WiFiEvent_t event)
       Serial.print("Obtained IP address: ");
       Serial.println(WiFi.localIP());
       WiFi.STA.dnsIP(2, 0x08080808);
+      // Modem sleep adds 100-500 ms latency per packet; web transfers then stall and the browser aborts them
+      WiFi.setSleep(false);
       break;
     case ARDUINO_EVENT_WIFI_STA_LOST_IP:
       Serial.println("Lost IP address and IP address is reset to 0");
@@ -3178,7 +3180,7 @@ void loopWifiScan() {
     }
     if (net_index >= 0) { // some network was found
       Serial.print("Connecting to: "); Serial.print(fetchWifiSSID(net_index));
-      Serial.print(" with password "); Serial.println(fetchWifiPw(net_index));
+      Serial.println();
 
       disp.rdis->drawString(0, lastl, "Conn:");
       disp.rdis->drawString(6 * dispxs, lastl, fetchWifiSSID(net_index));

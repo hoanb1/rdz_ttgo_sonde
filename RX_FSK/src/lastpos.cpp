@@ -113,6 +113,8 @@ bool updateLastPos(SondeInfo *si, bool force) {
     static uint32_t lastFlashSaveMillis = 0;
     static float lastSavedAlt = 99999.0f;
     static char lastSavedId[12] = {0};
+    static uint32_t lastSavedFrame = 0;
+    static float lastSavedLat = 0.0f, lastSavedLon = 0.0f;
     uint32_t now = millis();
 
     uint32_t cooldown_ms = (sonde.config.lastpos.interval > 0 ? (uint32_t)sonde.config.lastpos.interval : 10) * 1000;
@@ -121,7 +123,9 @@ bool updateLastPos(SondeInfo *si, bool force) {
 
     bool shouldWrite = false;
     if (force) {
-        shouldWrite = true;
+        // NORX timeouts force a save every few seconds; skip when the record has not changed since the last save
+        shouldWrite = strcmp(lastSavedId, lastPos.id) != 0 || lastPos.frame != lastSavedFrame ||
+                      lastPos.lat != lastSavedLat || lastPos.lon != lastSavedLon || lastPos.alt != lastSavedAlt;
     } else if (strcmp(lastSavedId, lastPos.id) != 0) {
         shouldWrite = true;
     } else if (now - lastFlashSaveMillis >= cooldown_ms) {
@@ -165,6 +169,9 @@ bool updateLastPos(SondeInfo *si, bool force) {
 
         lastFlashSaveMillis = now;
         lastSavedAlt = lastPos.alt;
+        lastSavedFrame = lastPos.frame;
+        lastSavedLat = lastPos.lat;
+        lastSavedLon = lastPos.lon;
         strncpy(lastSavedId, lastPos.id, sizeof(lastSavedId) - 1);
         LOG_I(TAG, "Persisted last-known sonde position to LittleFS: %s at %.6f,%.6f alt=%.1fm\n",
               lastPos.id, lastPos.lat, lastPos.lon, lastPos.alt);

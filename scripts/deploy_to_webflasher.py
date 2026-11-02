@@ -1,126 +1,183 @@
 #!/usr/bin/env python3
+"""Build rdz_ttgo_sonde firmware and deploy it to the hoan.uk Pi (webflasher + in-app OTA).
+
+Everything is staged in a local temp dir that mirrors /home/pi/hoan.uk/firmware/ and
+then pushed with rsync over ssh. Use --dry-run to see the actions without touching the server.
+"""
 import os
+import re
 import sys
 import json
 import shutil
 import subprocess
 import argparse
+import tempfile
+from datetime import datetime
 
 # Configured paths
-RDZ_DIR = "/home/hoan/DATA/rdz_ttgo_sonde"
-HOAN_DIR = "/home/hoan/DATA/hoan.uk"
-VERSION_JSON_PATH = os.path.join(HOAN_DIR, "firmware/version.json")
+RDZ_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(RDZ_DIR, "RX_FSK/data")
+VERSION_H = os.path.join(RDZ_DIR, "RX_FSK/version.h")
+
+REMOTE_HOST = "root@192.168.3.24"
+REMOTE_FW_DIR = "/home/pi/hoan.uk/firmware"
+REMOTE_OWNER = "pi:pi"
+
+SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
+BUILD_TIMEOUT = 1800
+NET_TIMEOUT = 300
 
 ENV_CONFIGS = {
     "heltec-lora32-v3": {
         "board_name": "Heltec-lora-32-V3",
         "folder_name": "heltec-wifi-lora-v3",
+        "mcu": "esp32s3",
+        "flash_size": "8MB",
+        "flash_mode": "keep",
         "fs_offset": "0x320000",
         "fonts_offset": "0x310000",
     },
     "ttgo-lora32": {
         "board_name": "Sonde-TTGO-Lora32-v21",
         "folder_name": "ttgo-lora32",
+        "mcu": "esp32",
+        "flash_size": "4MB",
+        "flash_mode": "keep",
         "fs_offset": "0x320000",
         "fonts_offset": "0x310000",
     }
 }
 
-def run_cmd(cmd, cwd=None):
+# User state on the device: must never be overwritten by an OTA filesystem update.
+USER_STATE_FILES = {"config.txt", "networks.txt", "qrg.txt", "user.txt", "lastpos.txt", "localupd.txt"}
+
+DRY_RUN = False
+
+
+def run_cmd(cmd, cwd=None, timeout=NET_TIMEOUT, capture=False):
     print(f"Running command: {' '.join(cmd)}")
-    res = subprocess.run(cmd, cwd=cwd)
+    try:
+        res = subprocess.run(cmd, cwd=cwd, timeout=timeout,
+                             stdout=subprocess.PIPE if capture else None, text=capture)
+    except subprocess.TimeoutExpired:
+        print(f"Error: Command timed out after {timeout}s")
+        sys.exit(1)
     if res.returncode != 0:
         print(f"Error: Command failed with code {res.returncode}")
         sys.exit(res.returncode)
+    return res.stdout if capture else None
+
+
+def ssh(remote_cmd, capture=False, timeout=60):
+    return run_cmd(["ssh"] + SSH_OPTS + [REMOTE_HOST, remote_cmd], timeout=timeout, capture=capture)
+
+
+def read_version_id():
+    """Reads version_id (e.g. 'v1.3.6-hoanuk') from RX_FSK/version.h."""
+    with open(VERSION_H) as f:
+        m = re.search(r'version_id\s*=\s*"([^"]+)"', f.read())
+    if not m:
+        print(f"Error: version_id not found in {VERSION_H}")
+        sys.exit(1)
+    return m.group(1)
+
+
+def folder_version(version_id):
+    """'v1.3.6-hoanuk' -> '1.3.6'."""
+    m = re.match(r'v?(\d+(?:\.\d+)*)', version_id)
+    if not m:
+        print(f"Error: cannot derive folder version from '{version_id}'")
+        sys.exit(1)
+    return m.group(1)
+
 
 def generate_update_fs_bin(data_dir, output_file):
-    """Packages HTML, CSS, and JS files from data_dir into update.fs.bin."""
+    """Packages HTML, CSS, JS and screen/gps definition files from data_dir into update.fs.bin.
+    User state files (config, networks, ...) are excluded so an OTA does not wipe them."""
     print(f"Generating update.fs.bin from {data_dir} -> {output_file}")
-    files = [f for f in os.listdir(data_dir) if f.endswith(('.js', '.html', '.css', '.txt'))]
+    files = sorted(
+        f for f in os.listdir(data_dir)
+        if f.endswith(('.js', '.html', '.css', '.txt'))
+        and f not in USER_STATE_FILES
+        and os.path.isfile(os.path.join(data_dir, f))
+    )
     with open(output_file, "wb") as out_f:
         for f in files:
-            file_path = os.path.join(data_dir, f)
-            with open(file_path, "rb") as in_f:
+            with open(os.path.join(data_dir, f), "rb") as in_f:
                 data = in_f.read()
-            header = f"{f} {len(data)}\r\n".encode("utf-8")
-            out_f.write(header)
+            out_f.write(f"{f} {len(data)}\r\n".encode("utf-8"))
             out_f.write(data)
+    print(f"  packed {len(files)} files: {', '.join(files)}")
 
-def deploy_env(env, version):
+
+def build_env(env, skip_build):
     cfg = ENV_CONFIGS[env]
     build_dir = os.path.join(RDZ_DIR, f".pio/build/{env}")
 
-    print(f"\n=======================================================")
-    print(f"--- Starting deployment for {env} (v{version}) ---")
-    print(f"=======================================================\n")
+    if not skip_build:
+        print(f"[{env}] Building default binary targets...")
+        run_cmd(["pio", "run", "-e", env], cwd=RDZ_DIR, timeout=BUILD_TIMEOUT)
+        print(f"[{env}] Building filesystem binary targets...")
+        run_cmd(["pio", "run", "-e", env, "-t", "buildfs"], cwd=RDZ_DIR, timeout=BUILD_TIMEOUT)
+    else:
+        print(f"[{env}] --skip-build: reusing {build_dir}")
 
-    # Step 1: Compile firmware
-    print(f"[{env}] Building default binary targets...")
-    run_cmd(["pio", "run", "-e", env], cwd=RDZ_DIR)
-
-    # Step 2: Build filesystem (LittleFS)
-    print(f"[{env}] Building filesystem binary targets...")
-    run_cmd(["pio", "run", "-e", env, "-t", "buildfs"], cwd=RDZ_DIR)
-
-    # Step 3: Build merged firmware image using esptool
+    # Merged full flash image (always regenerated from the build outputs)
     print(f"[{env}] Building merged full flash image...")
-    esptool_path = os.path.expanduser("~/.platformio/penv/bin/esptool")
-    if not os.path.exists(esptool_path):
-        esptool_path = shutil.which("esptool.py") or shutil.which("esptool") or "esptool.py"
-    
-    mcu = "esp32s3" if env == "heltec-lora32-v3" else "esp32"
+    mcu = cfg["mcu"]
     bootloader_offset = "0x0" if mcu == "esp32s3" else "0x1000"
-    
     merge_cmd = [
-        esptool_path,
+        "pio", "pkg", "exec", "-p", "tool-esptoolpy", "--", "esptool.py",
         "--chip", mcu,
         "merge_bin",
         "-o", os.path.join(build_dir, "firmware-image.bin"),
-        "--flash_mode", "dio",
-        "--flash_size", "4MB",
+        "--flash_mode", cfg["flash_mode"],
+        "--flash_size", cfg["flash_size"],
+        "--fill-flash-size", cfg["flash_size"],
         bootloader_offset, os.path.join(build_dir, "bootloader.bin"),
         "0x8000", os.path.join(build_dir, "partitions.bin"),
         "0x10000", os.path.join(build_dir, "firmware.bin"),
-        "0x310000", os.path.join(build_dir, "fonts.bin"),
-        "0x320000", os.path.join(build_dir, "littlefs.bin"),
-        "--target-offset", bootloader_offset
+        cfg["fonts_offset"], os.path.join(build_dir, "fonts.bin"),
+        cfg["fs_offset"], os.path.join(build_dir, "littlefs.bin"),
     ]
-    run_cmd(merge_cmd, cwd=RDZ_DIR)
+    run_cmd(merge_cmd, cwd=RDZ_DIR, timeout=BUILD_TIMEOUT)
 
-    # Step 4: Locate generated binaries
-    src_ota = os.path.join(build_dir, "firmware.bin")
-    src_full = os.path.join(build_dir, "firmware-image.bin")
-    src_fs = os.path.join(build_dir, "littlefs.bin")
-    src_fonts = os.path.join(build_dir, "fonts.bin")
-
-    for f in [src_ota, src_full, src_fs, src_fonts]:
+    outs = {k: os.path.join(build_dir, v) for k, v in
+            [("ota", "firmware.bin"), ("full", "firmware-image.bin"),
+             ("fs", "littlefs.bin"), ("fonts", "fonts.bin")]}
+    for f in outs.values():
         if not os.path.exists(f):
             print(f"Error: Required build output not found: {f}")
             sys.exit(1)
+    return outs
 
-    # Step 5: Copy files to hoan.uk locations
-    dest_dir = os.path.join(HOAN_DIR, f"firmware/{cfg['folder_name']}/{version}")
-    public_dest_dir = os.path.join(HOAN_DIR, f"client/public/firmware/{cfg['folder_name']}/{version}")
-    dist_dest_dir = os.path.join(HOAN_DIR, f"client/dist/firmware/{cfg['folder_name']}/{version}")
 
-    dest_ota_name = f"ota-{cfg['folder_name']}-{version}.bin"
-    dest_full_name = f"full-image-{cfg['folder_name']}-{version}.bin"
-    dest_fs_name = f"littlefs-{cfg['folder_name']}-{version}.bin"
-    dest_fonts_name = f"fonts-{cfg['folder_name']}-{version}.bin"
+def stage_env(env, version, outs, stage_dir):
+    """Copies binaries into stage_dir/<folder>/<version>/ and returns the files list for version.json."""
+    cfg = ENV_CONFIGS[env]
+    fn = cfg["folder_name"]
+    dest = os.path.join(stage_dir, fn, version)
+    os.makedirs(dest, exist_ok=True)
+    names = {
+        "ota": f"ota-{fn}-{version}.bin",
+        "full": f"full-image-{fn}-{version}.bin",
+        "fs": f"littlefs-{fn}-{version}.bin",
+        "fonts": f"fonts-{fn}-{version}.bin",
+    }
+    for k, name in names.items():
+        shutil.copy2(outs[k], os.path.join(dest, name))
 
-    for target_dir in [dest_dir, public_dest_dir, dist_dest_dir]:
-        os.makedirs(target_dir, exist_ok=True)
-        shutil.copy2(src_ota, os.path.join(target_dir, dest_ota_name))
-        shutil.copy2(src_full, os.path.join(target_dir, dest_full_name))
-        shutil.copy2(src_fs, os.path.join(target_dir, dest_fs_name))
-        shutil.copy2(src_fonts, os.path.join(target_dir, dest_fonts_name))
+    base = f"/firmware/{fn}/{version}"
+    return [
+        {"name": "Firmware (OTA)", "type": "ota", "url": f"{base}/{names['ota']}", "offset": "0x10000"},
+        {"name": "Full Image (USB)", "type": "full", "url": f"{base}/{names['full']}", "offset": "0x0"},
+        {"name": "Fonts Partition", "type": "fonts", "url": f"{base}/{names['fonts']}", "offset": cfg["fonts_offset"]},
+        {"name": "FileSystem (OTA)", "type": "fs", "url": f"{base}/{names['fs']}", "offset": cfg["fs_offset"]},
+    ]
 
-    print(f"[{env}] Copied firmware binaries to server & client directories.")
 
-    # Step 6: Update version.json
-    with open(VERSION_JSON_PATH, "r") as f:
-        data = json.load(f)
-
+def update_version_json(data, env, version, files_list):
+    cfg = ENV_CONFIGS[env]
     # Standardize URLs
     for board in data.get("boards", []):
         for f_info in board.get("files", []):
@@ -134,115 +191,113 @@ def deploy_env(env, version):
             board_entry = b
             break
 
-    files_list = [
-        {
-            "name": "Firmware (OTA)",
-            "type": "ota",
-            "url": f"/firmware/{cfg['folder_name']}/{version}/{dest_ota_name}",
-            "offset": "0x10000"
-        },
-        {
-            "name": "Full Image (USB)",
-            "type": "full",
-            "url": f"/firmware/{cfg['folder_name']}/{version}/{dest_full_name}",
-            "offset": "0x0"
-        },
-        {
-            "name": "Fonts Partition",
-            "type": "fonts",
-            "url": f"/firmware/{cfg['folder_name']}/{version}/{dest_fonts_name}",
-            "offset": cfg["fonts_offset"]
-        },
-        {
-            "name": "FileSystem (OTA)",
-            "type": "fs",
-            "url": f"/firmware/{cfg['folder_name']}/{version}/{dest_fs_name}",
-            "offset": cfg["fs_offset"]
-        }
-    ]
-
     if board_entry:
         board_entry["version"] = version
         board_entry["files"] = files_list
         print(f"[{env}] Updated existing entry for '{cfg['board_name']}' in version.json")
     else:
-        new_board = {
+        data.setdefault("boards", []).append({
             "name": cfg["board_name"],
             "version": version,
-            "files": files_list
-        }
-        data["boards"].append(new_board)
+            "files": files_list,
+        })
         print(f"[{env}] Added new entry for '{cfg['board_name']}' in version.json")
 
-    with open(VERSION_JSON_PATH, "w") as f:
-        json.dump(data, f, indent=2)
 
-    # Also sync version.json to public and dist
-    for p in [os.path.join(HOAN_DIR, "client/public/firmware/version.json"), os.path.join(HOAN_DIR, "client/dist/firmware/version.json")]:
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        shutil.copy2(VERSION_JSON_PATH, p)
+def stage_ota_packages(version_id, channels, ota_bin, stage_dir):
+    """Generates stage_dir/rdz/<channel>/{update.ino.bin,update.fs.bin,update-info.html}."""
+    print("\n--- Generating RDZ in-app OTA Update Endpoints ---")
+    tmp_fs_bin = os.path.join(stage_dir, "update.fs.bin.tmp")
+    generate_update_fs_bin(DATA_DIR, tmp_fs_bin)
+    # update-info.html must be exactly the firmware version_id (e.g. v1.3.6-hoanuk)
+    update_info_html = f"<html><body><p>{version_id}</p></body></html>\n"
 
-def deploy_ota_packages(version, prefer_env=None):
-    """Generates /firmware/rdz/main/ and /firmware/rdz/dev2/ OTA update endpoints."""
-    print("\n=======================================================")
-    print("--- Generating RDZ in-app OTA Update Endpoints ---")
-    print("=======================================================\n")
-
-    data_dir = os.path.join(RDZ_DIR, "RX_FSK/data")
-    tmp_fs_bin = os.path.join(RDZ_DIR, ".pio/build/update.fs.bin")
-    os.makedirs(os.path.dirname(tmp_fs_bin), exist_ok=True)
-    generate_update_fs_bin(data_dir, tmp_fs_bin)
-
-    update_info_html = f"<html><body><p>v{version}-hoanuk</p></body></html>\n"
-
-    target_bin = None
-    if prefer_env:
-        p_bin = os.path.join(RDZ_DIR, f".pio/build/{prefer_env}/firmware.bin")
-        if os.path.exists(p_bin):
-            target_bin = p_bin
-
-    if not target_bin:
-        heltec_bin = os.path.join(RDZ_DIR, ".pio/build/heltec-lora32-v3/firmware.bin")
-        ttgo_bin = os.path.join(RDZ_DIR, ".pio/build/ttgo-lora32/firmware.bin")
-        target_bin = heltec_bin if os.path.exists(heltec_bin) else ttgo_bin
-
-    channels = ["main", "dev2"]
     for ch in channels:
-        for root_prefix in [
-            os.path.join(HOAN_DIR, f"firmware/rdz/{ch}"),
-            os.path.join(HOAN_DIR, f"client/public/firmware/rdz/{ch}"),
-            os.path.join(HOAN_DIR, f"client/dist/firmware/rdz/{ch}")
-        ]:
-            os.makedirs(root_prefix, exist_ok=True)
-            # 1. update.fs.bin
-            shutil.copy2(tmp_fs_bin, os.path.join(root_prefix, "update.fs.bin"))
-            # 2. update.ino.bin
-            if target_bin and os.path.exists(target_bin):
-                shutil.copy2(target_bin, os.path.join(root_prefix, "update.ino.bin"))
-            # 3. update-info.html
-            with open(os.path.join(root_prefix, "update-info.html"), "w") as f:
-                f.write(update_info_html)
+        d = os.path.join(stage_dir, "rdz", ch)
+        os.makedirs(d, exist_ok=True)
+        shutil.copy2(tmp_fs_bin, os.path.join(d, "update.fs.bin"))
+        shutil.copy2(ota_bin, os.path.join(d, "update.ino.bin"))
+        with open(os.path.join(d, "update-info.html"), "w") as f:
+            f.write(update_info_html)
+    os.remove(tmp_fs_bin)
+    print(f"Staged OTA files for channels {channels} (using {ota_bin})")
 
-    print(f"Successfully generated OTA files in /firmware/rdz/main/ and /firmware/rdz/dev2/ (using {target_bin})")
 
 def main():
-    parser = argparse.ArgumentParser(description="Build and copy rdz_ttgo_sonde firmware to hoan.uk webflasher and OTA endpoints")
-    parser.add_argument("--env", choices=list(ENV_CONFIGS.keys()) + ["all"], default="all", help="PlatformIO environment to build and deploy (default: all)")
-    parser.add_argument("--version-str", default="1.3.1", help="Firmware version (default: 1.3.1)")
+    global DRY_RUN
+    parser = argparse.ArgumentParser(description="Build and deploy rdz_ttgo_sonde firmware to the hoan.uk Pi (webflasher and OTA endpoints)")
+    parser.add_argument("--env", choices=list(ENV_CONFIGS.keys()) + ["all"], default="heltec-lora32-v3",
+                        help="PlatformIO environment to build and deploy (default: heltec-lora32-v3)")
+    parser.add_argument("--version-str", default=None,
+                        help="Folder version, e.g. 1.3.6 (default: derived from version_id in RX_FSK/version.h)")
+    parser.add_argument("--channels", default="main,dev2", help="Comma-separated OTA channels under rdz/ (default: main,dev2)")
+    parser.add_argument("--skip-build", action="store_true", help="Reuse existing .pio/build outputs, do not run pio")
+    parser.add_argument("--dry-run", action="store_true", help="Print server actions without changing anything on the server")
     args = parser.parse_args()
+    DRY_RUN = args.dry_run
 
-    version = args.version_str
+    version_id = read_version_id()
+    version = args.version_str or folder_version(version_id)
+    channels = [c.strip() for c in args.channels.split(",") if c.strip()]
+    envs = list(ENV_CONFIGS.keys()) if args.env == "all" else [args.env]
+    print(f"version_id={version_id} folder version={version} envs={envs} channels={channels} dry_run={DRY_RUN}")
 
-    if args.env == "all":
-        for e in ENV_CONFIGS.keys():
-            deploy_env(e, version)
-        deploy_ota_packages(version)
-    else:
-        deploy_env(args.env, version)
-        deploy_ota_packages(version, prefer_env=args.env)
+    stage_dir = tempfile.mkdtemp(prefix="webflasher-stage-")
+    try:
+        # Step 1: build + stage
+        built = {}
+        for e in envs:
+            print(f"\n=== {e} (v{version}) ===")
+            built[e] = build_env(e, args.skip_build)
 
-    print("\n--- ALL DEPLOYMENTS FINISHED SUCCESSFULLY! ---")
+        # Step 2: fetch version.json
+        remote_vj = f"{REMOTE_FW_DIR}/version.json"
+        local_vj = os.path.join(stage_dir, "version.json")
+        if DRY_RUN:
+            print(f"[dry-run] would fetch {REMOTE_HOST}:{remote_vj}")
+            data = {"boards": []}
+        else:
+            run_cmd(["scp"] + SSH_OPTS + [f"{REMOTE_HOST}:{remote_vj}", local_vj], timeout=NET_TIMEOUT)
+            with open(local_vj) as f:
+                data = json.load(f)
+
+        for e in envs:
+            files_list = stage_env(e, version, built[e], stage_dir)
+            update_version_json(data, e, version, files_list)
+        with open(local_vj, "w") as f:
+            json.dump(data, f, indent=2)
+
+        # Step 3: OTA channel files (prefer the first selected env's firmware)
+        stage_ota_packages(version_id, channels, built[envs[0]]["ota"], stage_dir)
+
+        # Step 4: upload
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        if DRY_RUN:
+            print("\n[dry-run] staged tree:")
+            for root, _, fs in os.walk(stage_dir):
+                for fn in sorted(fs):
+                    p = os.path.join(root, fn)
+                    print(f"  {os.path.relpath(p, stage_dir)} ({os.path.getsize(p)} B)")
+            for ch in channels:
+                print(f"[dry-run] ssh: cp -a {REMOTE_FW_DIR}/rdz/{ch} {REMOTE_FW_DIR}/rdz/{ch}.bak-{stamp}")
+            print(f"[dry-run] ssh: cp -a {remote_vj} {remote_vj}.bak-{stamp}")
+            print(f"[dry-run] rsync -rt {stage_dir}/ {REMOTE_HOST}:{REMOTE_FW_DIR}/")
+            print(f"[dry-run] ssh: chown -R {REMOTE_OWNER} {REMOTE_FW_DIR}")
+            print("\n--- DRY RUN FINISHED, nothing changed on the server ---")
+            return
+
+        backups = " && ".join(
+            f"if [ -d {REMOTE_FW_DIR}/rdz/{ch} ]; then cp -a {REMOTE_FW_DIR}/rdz/{ch} {REMOTE_FW_DIR}/rdz/{ch}.bak-{stamp}; fi"
+            for ch in channels)
+        ssh(f"{backups} && cp -a {remote_vj} {remote_vj}.bak-{stamp}")
+        run_cmd(["rsync", "-rt", "-e", "ssh " + " ".join(SSH_OPTS), stage_dir + "/", f"{REMOTE_HOST}:{REMOTE_FW_DIR}/"],
+                timeout=NET_TIMEOUT)
+        subdirs = [ENV_CONFIGS[e]["folder_name"] for e in envs] + ["rdz", "version.json"]
+        ssh("chown -R {} {}".format(REMOTE_OWNER, " ".join(f"{REMOTE_FW_DIR}/{s}" for s in subdirs)))
+        print("\n--- ALL DEPLOYMENTS FINISHED SUCCESSFULLY! ---")
+    finally:
+        shutil.rmtree(stage_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     main()
-
