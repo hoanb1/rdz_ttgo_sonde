@@ -553,7 +553,7 @@ void setupWifiList() {
   nNetworks = i;
   LOG_I(TAG, "%d networks in networks.txt\n", i);
   for (int j = 0; j < i; j++) {
-    LOG_I(TAG, "%s: %s\n", networks[j].id, networks[j].pw);
+    LOG_I(TAG, "%s\n", networks[j].id.c_str());
   }
 }
 
@@ -3180,7 +3180,7 @@ void loopWifiScan() {
     }
     if (net_index >= 0) { // some network was found
       Serial.print("Connecting to: "); Serial.print(fetchWifiSSID(net_index));
-      Serial.print(" with password "); Serial.println(fetchWifiPw(net_index));
+      Serial.println();
 
       disp.rdis->drawString(0, lastl, "Conn:");
       disp.rdis->drawString(6 * dispxs, lastl, fetchWifiSSID(net_index));
